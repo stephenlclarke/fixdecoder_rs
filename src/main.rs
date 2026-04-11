@@ -1551,6 +1551,8 @@ fn handle_components(opts: &CliOptions, schema: &SchemaTree) -> Result<()> {
 mod tests {
     use super::*;
     use std::collections::HashMap;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
 
     fn dummy_opts(version: &str) -> CliOptions {
         CliOptions {
@@ -1990,5 +1992,101 @@ mod tests {
         assert_eq!(dictionary_marker(Some("fix44"), "FIX44"), "*");
         assert_eq!(dictionary_marker(Some("fix44"), "FIX50"), " ");
         assert_eq!(dictionary_marker(None, "FIX44"), " ");
+    }
+
+    #[test]
+    fn parse_paging_rejects_empty_and_unknown_values() {
+        assert!(parse_paging(Some(&"".to_string())).is_err());
+        assert!(parse_paging(Some(&"sometimes".to_string())).is_err());
+    }
+
+    #[test]
+    fn parse_output_style_value_rejects_invalid_component() {
+        let err = parse_output_style_value("header,wat").unwrap_err();
+        assert!(err.to_string().contains("invalid --style component"));
+    }
+
+    #[test]
+    fn find_message_supports_name_and_msg_type_queries() {
+        let schema = load_schema_for_key("FIX44", &HashMap::new()).expect("load FIX44 schema");
+
+        let by_name = find_message(&schema, "Heartbeat").expect("lookup by name");
+        let by_type = find_message(&schema, "0").expect("lookup by msg type");
+
+        assert_eq!(by_name.msg_type, "0");
+        assert_eq!(by_type.name, "Heartbeat");
+        assert!(find_message(&schema, "NoSuchMessage").is_none());
+    }
+
+    #[test]
+    fn session_component_helpers_cover_fix50_family() {
+        assert!(!requires_session_components("FIX44"));
+        assert!(requires_session_components("FIX50"));
+        assert!(requires_session_components("FIX50SP1"));
+        assert!(requires_session_components("FIX50SP2"));
+        assert_eq!(key_to_xml_id("fix44"), Some("44"));
+        assert_eq!(key_to_xml_id("FIXT11"), Some("T11"));
+        assert_eq!(key_to_xml_id("FIX99"), None);
+    }
+
+    #[test]
+    fn ensure_session_components_backfills_missing_fix50_header_and_trailer() {
+        let mut dict =
+            FixDictionary::from_xml(fix::choose_embedded_xml("50")).expect("parse FIX50");
+        dict.header = Default::default();
+        dict.trailer = Default::default();
+
+        ensure_session_components("FIX50", &mut dict);
+
+        assert!(component_def_has_entries(&dict.header));
+        assert!(component_def_has_entries(&dict.trailer));
+    }
+
+    #[test]
+    fn component_def_has_entries_detects_fields_groups_and_components() {
+        let mut block = decoder::schema::ComponentDef::default();
+        assert!(!component_def_has_entries(&block));
+
+        block.fields.push(decoder::schema::FieldRef {
+            name: "BeginString".into(),
+            required: Some("Y".into()),
+        });
+        assert!(component_def_has_entries(&block));
+
+        let mut block = decoder::schema::ComponentDef::default();
+        block.groups.push(decoder::schema::GroupDef {
+            name: "NoPartyIDs".into(),
+            required: Some("N".into()),
+            fields: Vec::new(),
+            groups: Vec::new(),
+            components: Vec::new(),
+        });
+        assert!(component_def_has_entries(&block));
+
+        let mut block = decoder::schema::ComponentDef::default();
+        block.components.push(decoder::schema::ComponentRef {
+            name: "Header".into(),
+            _required: Some("Y".into()),
+        });
+        assert!(component_def_has_entries(&block));
+    }
+
+    #[test]
+    fn load_custom_dictionaries_keeps_last_duplicate_entry() {
+        let mut first = NamedTempFile::new().expect("temp xml");
+        let mut second = NamedTempFile::new().expect("temp xml");
+        write!(first, "{}", fix::choose_embedded_xml("44")).expect("write first xml");
+        write!(second, "{}", fix::choose_embedded_xml("44")).expect("write second xml");
+
+        let paths = vec![
+            first.path().display().to_string(),
+            second.path().display().to_string(),
+        ];
+        let dicts = load_custom_dictionaries(&paths).expect("load custom dictionaries");
+
+        let fix44 = dicts.get("FIX44").expect("FIX44 custom dictionary");
+        assert_eq!(fix44.path, second.path().display().to_string());
+        assert_eq!(fix44.dict.major, "4");
+        assert_eq!(fix44.dict.minor, "4");
     }
 }

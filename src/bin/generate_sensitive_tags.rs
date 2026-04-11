@@ -170,3 +170,157 @@ struct FixField {
     #[serde(rename = "@name")]
     name: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Mutex, OnceLock};
+    use tempfile::tempdir;
+
+    fn xml_with_fields(fields: &[(u32, &str)]) -> String {
+        let body = fields
+            .iter()
+            .map(|(number, name)| format!(r#"<field number="{number}" name="{name}"/>"#))
+            .collect::<Vec<_>>()
+            .join("");
+        format!(r#"<fix><fields>{body}</fields></fix>"#)
+    }
+
+    fn cwd_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn with_current_dir<T>(dir: &Path, f: impl FnOnce() -> T) -> T {
+        let _guard = cwd_lock().lock().expect("cwd lock");
+        let original = env::current_dir().expect("current dir");
+        env::set_current_dir(dir).expect("set current dir");
+        let result = f();
+        env::set_current_dir(original).expect("restore current dir");
+        result
+    }
+
+    #[test]
+    fn find_repo_root_walks_up_from_nested_directories() {
+        let temp = tempdir().expect("tempdir");
+        let repo_root = temp.path();
+        fs::write(
+            repo_root.join("Cargo.toml"),
+            "[package]\nname='demo'\nversion='0.1.0'\n",
+        )
+        .expect("cargo file");
+        fs::create_dir(repo_root.join("resources")).expect("resources dir");
+        let nested = repo_root.join("a/b/c");
+        fs::create_dir_all(&nested).expect("nested dirs");
+
+        let found = with_current_dir(&nested, || find_repo_root().expect("repo root"));
+
+        assert_eq!(
+            found.canonicalize().expect("canonical found path"),
+            repo_root.canonicalize().expect("canonical repo root")
+        );
+    }
+
+    #[test]
+    fn collect_xml_paths_returns_sorted_xml_files_only() {
+        let temp = tempdir().expect("tempdir");
+        let resources = temp.path();
+        fs::write(resources.join("b.xml"), "<fix><fields/></fix>").expect("write b.xml");
+        fs::write(resources.join("a.xml"), "<fix><fields/></fix>").expect("write a.xml");
+        fs::write(resources.join("notes.txt"), "ignore").expect("write txt");
+
+        let paths = collect_xml_paths(resources).expect("collect xml paths");
+        let names: Vec<_> = paths
+            .iter()
+            .map(|path| path.file_name().and_then(|name| name.to_str()).unwrap())
+            .collect();
+
+        assert_eq!(names, vec!["a.xml", "b.xml"]);
+    }
+
+    #[test]
+    fn load_fields_parses_and_deduplicates_by_tag_number() {
+        let temp = tempdir().expect("tempdir");
+        let first = temp.path().join("first.xml");
+        let second = temp.path().join("second.xml");
+        fs::write(
+            &first,
+            xml_with_fields(&[(1, "Account"), (2, "Password"), (50, "SenderSubID")]),
+        )
+        .expect("write first xml");
+        fs::write(
+            &second,
+            xml_with_fields(&[(2, "ShouldNotReplace"), (554, "Password")]),
+        )
+        .expect("write second xml");
+
+        let fields = load_fields(&[first, second]).expect("load fields");
+
+        assert_eq!(fields.get(&1).map(String::as_str), Some("Account"));
+        assert_eq!(fields.get(&2).map(String::as_str), Some("Password"));
+        assert_eq!(fields.get(&554).map(String::as_str), Some("Password"));
+    }
+
+    #[test]
+    fn filter_sensitive_selects_expected_field_names() {
+        let fields = BTreeMap::from([
+            (1, "Account".to_string()),
+            (49, "SenderCompID".to_string()),
+            (50, "SenderSubID".to_string()),
+            (553, "Username".to_string()),
+            (9999, "Unrelated".to_string()),
+        ]);
+
+        let filtered = filter_sensitive(&fields);
+
+        assert_eq!(filtered.len(), 4);
+        assert!(filtered.contains_key(&1));
+        assert!(filtered.contains_key(&49));
+        assert!(filtered.contains_key(&50));
+        assert!(filtered.contains_key(&553));
+        assert!(!filtered.contains_key(&9999));
+    }
+
+    #[test]
+    fn write_output_creates_parent_directory_and_serialises_tags() {
+        let temp = tempdir().expect("tempdir");
+        let out = temp.path().join("src/fix/sensitive.rs");
+        let tags = BTreeMap::from([(1, "Account".to_string()), (554, "Password".to_string())]);
+
+        write_output(&out, &tags).expect("write output");
+
+        let rendered = fs::read_to_string(out).expect("read output");
+        assert!(rendered.contains("SENSITIVE_TAG_NAMES"));
+        assert!(rendered.contains("map.insert(1, \"Account\");"));
+        assert!(rendered.contains("map.insert(554, \"Password\");"));
+    }
+
+    #[test]
+    fn run_generates_sensitive_file_from_repo_resources() {
+        let temp = tempdir().expect("tempdir");
+        let repo_root = temp.path();
+        fs::write(
+            repo_root.join("Cargo.toml"),
+            "[package]\nname='demo'\nversion='0.1.0'\n",
+        )
+        .expect("cargo file");
+        fs::create_dir_all(repo_root.join("resources")).expect("resources dir");
+        fs::create_dir_all(repo_root.join("src/fix")).expect("src/fix dir");
+        fs::write(
+            repo_root.join("resources/fix44.xml"),
+            xml_with_fields(&[(1, "Account"), (35, "MsgType"), (554, "Password")]),
+        )
+        .expect("write fix xml");
+        let nested = repo_root.join("tests/nested");
+        fs::create_dir_all(&nested).expect("nested dir");
+
+        let result = with_current_dir(&nested, run);
+
+        result.expect("run should succeed");
+        let generated = fs::read_to_string(repo_root.join("src/fix/sensitive.rs"))
+            .expect("generated sensitive.rs");
+        assert!(generated.contains("map.insert(1, \"Account\");"));
+        assert!(generated.contains("map.insert(554, \"Password\");"));
+        assert!(!generated.contains("MsgType"));
+    }
+}
