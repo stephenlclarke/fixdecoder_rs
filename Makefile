@@ -37,14 +37,12 @@ scan: prepare
 			else \
 				cargo audit || true; \
 			fi; \
-			echo "Running cargo-audit (JSON) → target/coverage/rustsec.json"; \
+			echo "Running cargo-audit (SARIF) → target/coverage/rustsec.sarif"; \
 			if [ -d "$${HOME}/.cargo/advisory-db" ]; then \
-				cargo audit --no-fetch --json > target/coverage/rustsec.json || true; \
+				cargo audit --no-fetch --format sarif > target/coverage/rustsec.sarif || true; \
 			else \
-				cargo audit --json > target/coverage/rustsec.json || true; \
+				cargo audit --format sarif > target/coverage/rustsec.sarif || true; \
 			fi; \
-			echo "Converting RustSec report to Sonar generic issues (target/coverage/sonar-generic-issues.json)"; \
-			python3 ci/convert_rustsec_to_sonar.py target/coverage/rustsec.json target/coverage/sonar-generic-issues.json || true; \
 		else \
 			echo "cargo-audit not installed; skipping security scan"; \
 		fi \
@@ -53,6 +51,7 @@ scan: prepare
 coverage: build
 	@bash -lc '\
 		source $(CI_SCRIPT) && \
+		ensure_llvm_tools_env && \
 		ensure_build_metadata && \
 		mkdir -p target/coverage && \
 		cargo llvm-cov clean --workspace >/dev/null 2>&1 || true; \
@@ -61,7 +60,8 @@ coverage: build
 		  --package pcap2fix \
 		  --cobertura \
 		  --ignore-filename-regex "src/fix/sensitive.rs|src/bin/generate_sensitive_tags.rs" \
-		  --output-path target/coverage/coverage.xml \
+		  --output-path target/coverage/coverage.xml && \
+		python3 ci/normalise_cobertura.py target/coverage/coverage.xml \
 	'
 
 sonar:
@@ -70,8 +70,9 @@ sonar:
 		if [[ -z "$$(echo "$(MAKECMDGOALS)" | grep -E "(^| )scan( |$$)|(^| )coverage( |$$)")" ]]; then \
 			$(MAKE) scan coverage; \
 		fi; \
+		ensure_sonar_token && \
 		ensure_sonar_scanner && \
-		sonar-scanner -Dsonar.externalIssuesReportPaths=target/coverage/sonar-generic-issues.json \
+		sonar-scanner -Dsonar.sarifReportPaths=target/coverage/rustsec.sarif \
 	'
 
 release:

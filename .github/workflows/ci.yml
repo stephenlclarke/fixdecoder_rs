@@ -1,6 +1,6 @@
 ---
 # yamllint disable rule:truthy rule:line-length
-# CI pipeline for PRs (lint, test, coverage, sonar) and tag release builds.
+# CI pipeline for PRs, main-branch Sonar updates, and tag release builds.
 name: CI Pipeline
 
 on:
@@ -10,6 +10,9 @@ on:
       - master
       - develop
   push:
+    branches:
+      - main
+      - master
     tags:
       - "v*"
 
@@ -35,7 +38,7 @@ jobs:
     name: Lint & Coverage
     runs-on: ubuntu-latest
     needs: dictionaries
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'))
     steps:
       - uses: actions/checkout@v4
       - name: Lint workflow YAML
@@ -94,7 +97,7 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-audit
-      - name: Run scan and coverage (includes audit conversion)
+      - name: Run scan and coverage (includes RustSec SARIF export)
         run: make scan coverage
       - name: Export clippy report for Sonar
         run: |
@@ -109,11 +112,11 @@ jobs:
           name: coverage-xml
           path: target/coverage/coverage.xml
           if-no-files-found: error
-      - name: Upload sonar issues artifact
+      - name: Upload RustSec SARIF artifact
         uses: actions/upload-artifact@v4
         with:
-          name: sonar-generic-issues
-          path: target/coverage/sonar-generic-issues.json
+          name: rustsec-sarif
+          path: target/coverage/rustsec.sarif
           if-no-files-found: warn
       - name: Upload clippy report artifact
         uses: actions/upload-artifact@v4
@@ -126,7 +129,7 @@ jobs:
     name: Sonar (coverage import)
     runs-on: ubuntu-latest
     needs: [quality]
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'))
     steps:
       - uses: actions/checkout@v4
       - name: Determine toolchain channel
@@ -160,10 +163,10 @@ jobs:
         with:
           name: coverage-xml
           path: target/coverage
-      - name: Download sonar issues artifact
+      - name: Download RustSec SARIF artifact
         uses: actions/download-artifact@v4
         with:
-          name: sonar-generic-issues
+          name: rustsec-sarif
           path: target/coverage
       - name: Download clippy report artifact
         uses: actions/download-artifact@v4
@@ -199,8 +202,8 @@ jobs:
           fi
           sonar-scanner \
             -Dsonar.host.url=https://sonarcloud.io \
-            -Dsonar.externalIssuesReportPaths=target/coverage/sonar-generic-issues.json \
-            -Dsonar.rust.clippy.reportPaths="${CLIPPY_REPORT}" \
+            -Dsonar.sarifReportPaths=target/coverage/rustsec.sarif \
+            -Dsonar.rust.clippyReport.reportPaths="${CLIPPY_REPORT}" \
             -Dsonar.rust.clippy.enabled=false \
             "${PR_OPTS[@]}"
 

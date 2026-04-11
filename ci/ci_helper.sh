@@ -15,6 +15,57 @@ function warn() {
   printf "\n\033[38;5;214m%s\033[0m\n" "$1"
 }
 
+function ensure_llvm_tools_env() {
+  if [[ -n "${LLVM_COV:-}" && -n "${LLVM_PROFDATA:-}" ]]; then
+    return
+  fi
+
+  local sysroot host llvm_bin rustup_rustc toolchain_root
+  sysroot="$(rustc --print sysroot)"
+  host="$(rustc -vV | awk '/^host:/ {print $2}')"
+  llvm_bin="${sysroot}/lib/rustlib/${host}/bin"
+
+  if [[ -x "${llvm_bin}/llvm-cov" && -x "${llvm_bin}/llvm-profdata" ]]; then
+    export LLVM_COV="${llvm_bin}/llvm-cov"
+    export LLVM_PROFDATA="${llvm_bin}/llvm-profdata"
+    return
+  fi
+
+  rustup_rustc="$(rustup which rustc 2>/dev/null || true)"
+  if [[ -z "${rustup_rustc}" ]]; then
+    return
+  fi
+
+  toolchain_root="$(cd "$(dirname "${rustup_rustc}")/.." && pwd)"
+  shopt -s nullglob
+  for llvm_bin in "${toolchain_root}"/lib/rustlib/*/bin; do
+    if [[ -x "${llvm_bin}/llvm-cov" && -x "${llvm_bin}/llvm-profdata" ]]; then
+      export LLVM_COV="${llvm_bin}/llvm-cov"
+      export LLVM_PROFDATA="${llvm_bin}/llvm-profdata"
+      shopt -u nullglob
+      return
+    fi
+  done
+  shopt -u nullglob
+}
+
+function ensure_sonar_token() {
+  if [[ -n "${SONAR_TOKEN:-}" ]]; then
+    return
+  fi
+
+  local token_file="${HOME}/.secrets/SONAR_TOKEN"
+  if [[ -f "${token_file}" ]]; then
+    SONAR_TOKEN="$(<"${token_file}")"
+    export SONAR_TOKEN
+    log ">> Loaded SONAR_TOKEN from ${token_file}"
+    return
+  fi
+
+  warn "SONAR_TOKEN is not set and ${token_file} was not found."
+  return 1
+}
+
 setup_done=false
 function cmd_setup_environment() {
   if [[ "${setup_done}" == true ]]; then
@@ -34,6 +85,7 @@ function cmd_setup_environment() {
     # Avoid inheriting target-specific RUSTFLAGS (e.g., musl + crt-static) that break proc-macro builds.
     RUSTFLAGS="" cargo install cargo-llvm-cov --locked --quiet
   fi
+  ensure_llvm_tools_env
   if ! command -v cargo-audit >/dev/null 2>&1; then
     log ">> Installing cargo-audit"
     cargo install cargo-audit --locked --quiet
@@ -196,4 +248,4 @@ function ensure_build_metadata() {
 
 # This script is intended to be sourced by the Makefile or ad-hoc bash
 # invocations. Call helpers such as `cmd_setup_environment`, `ensure_build_metadata`,
-# `download_fix_specs`, and `ensure_sonar_scanner` from targets.
+# `download_fix_specs`, `ensure_sonar_scanner`, and `ensure_sonar_token` from targets.
