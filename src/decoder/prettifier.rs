@@ -794,10 +794,7 @@ fn process_with_validation(
     }
 
     for (start, end) in &matches {
-        record_msg_type(&line[*start..*end], ctx);
-        if let Some(ref mut tracker) = ctx.summary.as_mut() {
-            tracker.record_message(&line[*start..*end], ctx.fix_override);
-        }
+        track_message(&line[*start..*end], ctx);
     }
     render_summary_footer(ctx)?;
 
@@ -845,10 +842,16 @@ fn stream_invalid_message(
 
 fn record_messages(messages: &[String], ctx: &mut PrettifyContext) {
     for msg in messages {
+        track_message(msg, ctx);
+    }
+}
+
+fn track_message(msg: &str, ctx: &mut PrettifyContext) {
+    if !ctx.validation_enabled {
         record_msg_type(msg, ctx);
-        if let Some(ref mut tracker) = ctx.summary.as_mut() {
-            tracker.record_message(msg, ctx.fix_override);
-        }
+    }
+    if let Some(ref mut tracker) = ctx.summary.as_mut() {
+        tracker.record_message(msg, ctx.fix_override);
     }
 }
 
@@ -1090,6 +1093,8 @@ mod tests {
     use std::collections::HashMap;
     use std::io::Cursor;
     use std::sync::Mutex;
+    use std::sync::atomic::Ordering;
+    use tempfile::NamedTempFile;
 
     const SOH: char = '\u{0001}';
     static TEST_GUARD: once_cell::sync::Lazy<Mutex<()>> =
@@ -1213,6 +1218,7 @@ mod tests {
     #[test]
     fn validation_skips_valid_messages() {
         let _lock = TEST_GUARD.lock().unwrap();
+        interrupt_flag().store(false, Ordering::Relaxed);
         let obfuscator = fix::create_obfuscator(false);
         let lookup = load_dictionary(&format!("8=FIX.4.4{SOH}35=0{SOH}10=000{SOH}"));
         let order = lookup
@@ -1265,6 +1271,61 @@ mod tests {
         assert!(
             output.trim().is_empty(),
             "valid messages should not produce output in validation mode"
+        );
+    }
+
+    #[test]
+    fn prettify_files_validation_skips_message_counts_for_clean_messages() {
+        let _lock = TEST_GUARD.lock().unwrap();
+        interrupt_flag().store(false, Ordering::Relaxed);
+        let obfuscator = fix::create_obfuscator(false);
+        let lookup = load_dictionary(&format!("8=FIX.4.4{SOH}35=0{SOH}10=000{SOH}"));
+        let order = lookup
+            .message_def("0")
+            .expect("heartbeat definition")
+            .field_order
+            .clone();
+        let mut values = HashMap::new();
+        values.insert(35u32, "0");
+        values.insert(34u32, "1");
+        values.insert(49u32, "AAA");
+        values.insert(52u32, "20240101-00:00:00");
+        values.insert(56u32, "BBB");
+
+        let body = build_body_from_order(&order, &values);
+        let msg_without_checksum = format!("8=FIX.4.4{SOH}9={:03}{SOH}{}", body.len(), body);
+        let checksum = validator::calculate_checksum(&format!("{msg_without_checksum}10=000{SOH}"));
+        let msg = format!("{msg_without_checksum}10={checksum:03}{SOH}");
+
+        let mut file = NamedTempFile::new().expect("temp file");
+        std::io::Write::write_all(&mut file, format!("{msg}\n").as_bytes()).expect("write temp");
+
+        let mut out = Vec::new();
+        let mut err = io::sink();
+        let mut summary = None;
+        let mut ctx = PrettifyContext {
+            out: &mut out,
+            err_out: &mut err,
+            obfuscator: &obfuscator,
+            display_delimiter: '|',
+            style: OutputStyle::plain(),
+            wide_grid: false,
+            summary: &mut summary,
+            fix_override: None,
+            follow: false,
+            live_status_enabled: true,
+            validation_enabled: true,
+            message_counts: HashMap::new(),
+            counts_dirty: false,
+            interrupted: interrupt_flag(),
+        };
+
+        let status = prettify_files(&[file.path().display().to_string()], &mut ctx);
+        let output = String::from_utf8(out).unwrap();
+        assert_eq!(status, 0);
+        assert!(
+            output.trim().is_empty(),
+            "clean validation runs should not emit decoded output or message counts"
         );
     }
 

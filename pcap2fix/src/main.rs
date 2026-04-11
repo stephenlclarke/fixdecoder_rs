@@ -70,116 +70,177 @@ enum ReassemblyError {
     Overflow,
 }
 
+#[derive(Clone, Copy)]
+struct CaptureOptions {
+    port_filter: Option<u16>,
+    delimiter: u8,
+    max_flow_bytes: usize,
+    idle_timeout: Duration,
+}
+
+#[derive(Default)]
+struct CaptureState {
+    flows: HashMap<FlowKey, FlowState>,
+    scratch: Vec<u8>,
+    legacy_linktype: Option<Linktype>,
+    idb_linktypes: HashMap<u32, Linktype>,
+    next_if_id: u32,
+}
+
+const FIX_BEGIN: &[u8] = b"8=FIX";
+
+enum MessageEnd {
+    Complete(usize),
+    Incomplete,
+    Invalid,
+}
+
 fn main() -> Result<()> {
-    let args = Args::parse();
-    let delimiter = parse_delimiter(&args.delimiter)?;
+    run(Args::parse())
+}
+
+fn run(args: Args) -> Result<()> {
+    let options = CaptureOptions {
+        port_filter: args.port,
+        delimiter: parse_delimiter(&args.delimiter)?,
+        max_flow_bytes: args.max_flow_bytes,
+        idle_timeout: Duration::from_secs(args.idle_timeout),
+    };
     let mut reader = open_reader(&args.input)?;
-
-    let mut flows: HashMap<FlowKey, FlowState> = HashMap::new();
-    let idle = Duration::from_secs(args.idle_timeout);
+    let mut state = CaptureState::default();
     let mut stdout = io::BufWriter::new(io::stdout().lock());
-    let mut scratch = Vec::new();
-    let mut legacy_linktype = None;
-    let mut idb_linktypes: HashMap<u32, Linktype> = HashMap::new();
-    let mut next_if_id: u32 = 0;
 
+    process_capture(&mut *reader, &options, &mut state, &mut stdout)?;
+    flush_remaining_flows(&mut state, options.delimiter, &mut stdout)?;
+    stdout.flush()?;
+    Ok(())
+}
+
+fn process_capture<R: PcapReaderIterator + ?Sized, W: Write>(
+    reader: &mut R,
+    options: &CaptureOptions,
+    state: &mut CaptureState,
+    out: &mut W,
+) -> Result<()> {
     loop {
         match reader.next() {
             Ok((offset, block)) => {
-                {
-                    match block {
-                        PcapBlockOwned::LegacyHeader(hdr) => {
-                            legacy_linktype = Some(hdr.network);
-                        }
-                        PcapBlockOwned::Legacy(b) => {
-                            let linktype = legacy_linktype.unwrap_or(Linktype::ETHERNET);
-                            if let Some(packet) =
-                                get_packetdata(b.data, linktype, b.caplen as usize)
-                            {
-                                if let Err(err) = handle_packet_data(
-                                    packet,
-                                    args.port,
-                                    delimiter,
-                                    args.max_flow_bytes,
-                                    &mut flows,
-                                    &mut stdout,
-                                ) {
-                                    eprintln!("warn: skipping packet: {err}");
-                                }
-                            }
-                        }
-                        PcapBlockOwned::NG(block) => match block {
-                            Block::SectionHeader(_) => {
-                                idb_linktypes.clear();
-                                next_if_id = 0;
-                            }
-                            Block::InterfaceDescription(idb) => {
-                                idb_linktypes.insert(next_if_id, idb.linktype);
-                                next_if_id += 1;
-                            }
-                            Block::EnhancedPacket(epb) => {
-                                if let Some(linktype) = idb_linktypes.get(&epb.if_id) {
-                                    if let Some(packet) = get_packetdata(
-                                        epb.packet_data(),
-                                        *linktype,
-                                        epb.caplen as usize,
-                                    ) {
-                                        if let Err(err) = handle_packet_data(
-                                            packet,
-                                            args.port,
-                                            delimiter,
-                                            args.max_flow_bytes,
-                                            &mut flows,
-                                            &mut stdout,
-                                        ) {
-                                            eprintln!("warn: skipping packet: {err}");
-                                        }
-                                    }
-                                }
-                            }
-                            Block::SimplePacket(spb) => {
-                                if let Some(linktype) = idb_linktypes.get(&0) {
-                                    if let Some(packet) = get_packetdata(
-                                        spb.packet_data(),
-                                        *linktype,
-                                        spb.origlen as usize,
-                                    ) {
-                                        if let Err(err) = handle_packet_data(
-                                            packet,
-                                            args.port,
-                                            delimiter,
-                                            args.max_flow_bytes,
-                                            &mut flows,
-                                            &mut stdout,
-                                        ) {
-                                            eprintln!("warn: skipping packet: {err}");
-                                        }
-                                    }
-                                }
-                            }
-                            _ => {}
-                        },
-                    }
-                }
+                handle_block(block, options, state, out);
                 reader.consume(offset);
-                evict_idle(&mut flows, idle);
+                evict_idle(&mut state.flows, options.idle_timeout);
             }
-            Err(pcap_parser::PcapError::Eof) => break,
+            Err(pcap_parser::PcapError::Eof) => return Ok(()),
             Err(pcap_parser::PcapError::Incomplete) => {
-                // need more data
                 reader
                     .refill()
-                    .map_err(|e| anyhow!("failed to refill reader: {e}"))?;
+                    .map_err(|err| anyhow!("failed to refill reader: {err}"))?;
             }
-            Err(e) => return Err(anyhow!("pcap parse error: {e}")),
+            Err(err) => return Err(anyhow!("pcap parse error: {err}")),
         }
     }
+}
 
-    // flush any trailing message fragments (best effort)
-    for flow in flows.values_mut() {
-        flush_complete_messages(&mut flow.buffer, delimiter, &mut scratch, &mut stdout)?;
+fn handle_block<W: Write>(
+    block: PcapBlockOwned<'_>,
+    options: &CaptureOptions,
+    state: &mut CaptureState,
+    out: &mut W,
+) {
+    match block {
+        PcapBlockOwned::LegacyHeader(header) => {
+            state.legacy_linktype = Some(header.network);
+        }
+        PcapBlockOwned::Legacy(packet) => {
+            let linktype = state.legacy_linktype.unwrap_or(Linktype::ETHERNET);
+            handle_packet_block(
+                packet.data,
+                linktype,
+                packet.caplen as usize,
+                options,
+                state,
+                out,
+            );
+        }
+        PcapBlockOwned::NG(block) => handle_ng_block(block, options, state, out),
     }
-    stdout.flush()?;
+}
+
+fn handle_ng_block<W: Write>(
+    block: Block<'_>,
+    options: &CaptureOptions,
+    state: &mut CaptureState,
+    out: &mut W,
+) {
+    match block {
+        Block::SectionHeader(_) => {
+            state.idb_linktypes.clear();
+            state.next_if_id = 0;
+        }
+        Block::InterfaceDescription(description) => {
+            state
+                .idb_linktypes
+                .insert(state.next_if_id, description.linktype);
+            state.next_if_id += 1;
+        }
+        Block::EnhancedPacket(packet) => {
+            if let Some(linktype) = state.idb_linktypes.get(&packet.if_id).copied() {
+                handle_packet_block(
+                    packet.packet_data(),
+                    linktype,
+                    packet.caplen as usize,
+                    options,
+                    state,
+                    out,
+                );
+            }
+        }
+        Block::SimplePacket(packet) => {
+            if let Some(linktype) = state.idb_linktypes.get(&0).copied() {
+                handle_packet_block(
+                    packet.packet_data(),
+                    linktype,
+                    packet.origlen as usize,
+                    options,
+                    state,
+                    out,
+                );
+            }
+        }
+        _ => {}
+    }
+}
+
+fn handle_packet_block<W: Write>(
+    data: &[u8],
+    linktype: Linktype,
+    captured_len: usize,
+    options: &CaptureOptions,
+    state: &mut CaptureState,
+    out: &mut W,
+) {
+    let Some(packet) = get_packetdata(data, linktype, captured_len) else {
+        return;
+    };
+    if let Err(err) = handle_packet_data(
+        packet,
+        options.port_filter,
+        options.delimiter,
+        options.max_flow_bytes,
+        &mut state.flows,
+        out,
+    ) {
+        eprintln!("warn: skipping packet: {err}");
+    }
+}
+
+fn flush_remaining_flows<W: Write>(
+    state: &mut CaptureState,
+    delimiter: u8,
+    out: &mut W,
+) -> Result<()> {
+    for flow in state.flows.values_mut() {
+        flush_complete_messages(&mut flow.buffer, delimiter, &mut state.scratch, out)?;
+    }
     Ok(())
 }
 
@@ -371,13 +432,35 @@ fn flush_complete_messages<W: Write>(
     out: &mut W,
 ) -> Result<()> {
     let mut cursor = 0;
-    while let Some(rel_end) = find_message_end(&buffer[cursor..], delimiter) {
-        let end = cursor + rel_end;
-        scratch.clear();
-        scratch.extend_from_slice(&buffer[cursor..=end]);
-        scratch.push(b'\n'); // newline so each FIX message prints on its own line
-        out.write_all(scratch)?;
-        cursor = end + 1;
+    while cursor < buffer.len() {
+        let Some(rel_start) = find_message_start(&buffer[cursor..]) else {
+            if cursor > 0 {
+                buffer.drain(0..cursor);
+            }
+            retain_partial_begin_string(buffer);
+            return Ok(());
+        };
+        cursor += rel_start;
+
+        match find_message_end(&buffer[cursor..], delimiter) {
+            MessageEnd::Complete(rel_end) => {
+                let end = cursor + rel_end;
+                scratch.clear();
+                scratch.extend_from_slice(&buffer[cursor..=end]);
+                scratch.push(b'\n'); // newline so each FIX message prints on its own line
+                out.write_all(scratch)?;
+                cursor = end + 1;
+            }
+            MessageEnd::Incomplete => {
+                if cursor > 0 {
+                    buffer.drain(0..cursor);
+                }
+                return Ok(());
+            }
+            MessageEnd::Invalid => {
+                cursor += 1;
+            }
+        }
     }
     if cursor > 0 {
         buffer.drain(0..cursor);
@@ -385,43 +468,83 @@ fn flush_complete_messages<W: Write>(
     Ok(())
 }
 
-fn find_message_end(buffer: &[u8], delimiter: u8) -> Option<usize> {
+fn find_message_start(buffer: &[u8]) -> Option<usize> {
+    buffer
+        .windows(FIX_BEGIN.len())
+        .position(|window| window == FIX_BEGIN)
+}
+
+fn retain_partial_begin_string(buffer: &mut Vec<u8>) {
+    let keep = (1..FIX_BEGIN.len())
+        .rev()
+        .find(|prefix_len| buffer.ends_with(&FIX_BEGIN[..*prefix_len]))
+        .unwrap_or(0);
+
+    if keep == 0 {
+        buffer.clear();
+        return;
+    }
+
+    let drain_until = buffer.len().saturating_sub(keep);
+    if drain_until > 0 {
+        buffer.drain(0..drain_until);
+    }
+}
+
+fn find_message_end(buffer: &[u8], delimiter: u8) -> MessageEnd {
     // Need at least "8=..|9=..|" plus checksum ("10=000|")
     if buffer.len() < 16 {
-        return None;
+        return MessageEnd::Incomplete;
     }
-    let begin_end = buffer.iter().position(|b| *b == delimiter)?;
+    let Some(begin_end) = buffer.iter().position(|b| *b == delimiter) else {
+        return MessageEnd::Incomplete;
+    };
     let body_len_field_start = begin_end + 1;
-    let body_len_end = body_len_field_start
-        + buffer[body_len_field_start..]
-            .iter()
-            .position(|b| *b == delimiter)?; // include delimiter
+    let Some(body_len_rel_end) = buffer[body_len_field_start..]
+        .iter()
+        .position(|b| *b == delimiter)
+    else {
+        return MessageEnd::Incomplete;
+    };
+    let body_len_end = body_len_field_start + body_len_rel_end;
     if body_len_end <= body_len_field_start + 1 {
-        return None;
+        return MessageEnd::Invalid;
     }
     if !buffer[body_len_field_start..].starts_with(b"9=") {
-        return None;
+        return MessageEnd::Invalid;
     }
     let body_len_bytes = &buffer[body_len_field_start + 2..body_len_end];
-    let body_len: usize = parse_decimal(body_len_bytes)?;
+    let Some(body_len) = parse_decimal(body_len_bytes) else {
+        return MessageEnd::Invalid;
+    };
     let body_start = body_len_end + 1;
-    let body_end = body_start.checked_add(body_len)?;
+    let Some(body_end) = body_start.checked_add(body_len) else {
+        return MessageEnd::Invalid;
+    };
     // checksum starts immediately after body
     if body_end + 7 > buffer.len() {
-        return None;
+        return MessageEnd::Incomplete;
     }
-    if !buffer.get(body_end..)?.starts_with(b"10=") {
-        return None;
+    let Some(checksum_field) = buffer.get(body_end..) else {
+        return MessageEnd::Incomplete;
+    };
+    if !checksum_field.starts_with(b"10=") {
+        return MessageEnd::Invalid;
     }
-    let checksum_val = buffer.get(body_end + 3..body_end + 6)?;
+    let Some(checksum_val) = buffer.get(body_end + 3..body_end + 6) else {
+        return MessageEnd::Incomplete;
+    };
     if checksum_val.iter().any(|b| !b.is_ascii_digit()) {
-        return None;
+        return MessageEnd::Invalid;
     }
     let end_delim_idx = body_end + 6;
-    if *buffer.get(end_delim_idx)? != delimiter {
-        return None;
+    let Some(end_delimiter) = buffer.get(end_delim_idx) else {
+        return MessageEnd::Incomplete;
+    };
+    if *end_delimiter != delimiter {
+        return MessageEnd::Invalid;
     }
-    Some(end_delim_idx)
+    MessageEnd::Complete(end_delim_idx)
 }
 
 fn parse_decimal(bytes: &[u8]) -> Option<usize> {
@@ -498,7 +621,7 @@ mod tests {
     }
 
     #[test]
-    fn flushes_full_messages_only() {
+    fn flushes_full_messages_and_discards_non_fix_tail() {
         let mut buf = build_fix_message("35=0\u{0001}", 0x01);
         buf.extend_from_slice(b"extra");
         let mut out = Vec::new();
@@ -507,40 +630,60 @@ mod tests {
         let mut expected = build_fix_message("35=0\u{0001}", 0x01);
         expected.push(b'\n');
         assert_eq!(out, expected);
-        assert_eq!(buf.as_slice(), b"extra");
+        assert!(
+            buf.is_empty(),
+            "non-FIX tail should be discarded during resync"
+        );
     }
 
     #[test]
     fn retransmit_is_ignored() {
         let mut flow = FlowState::default();
         let mut out = Vec::new();
-        reassemble_and_emit(&mut flow, 1, b"ABC", b'|', 1024, &mut out).unwrap();
-        reassemble_and_emit(&mut flow, 1, b"ABC", b'|', 1024, &mut out).unwrap();
-        assert!(flow.buffer.starts_with(b"ABC"));
+        let message = build_fix_message("35=0|49=AAA|", b'|');
+        let part = &message[..10];
+
+        reassemble_and_emit(&mut flow, 1, part, b'|', 1024, &mut out).unwrap();
+        reassemble_and_emit(&mut flow, 1, part, b'|', 1024, &mut out).unwrap();
+
+        assert_eq!(flow.buffer, part);
+        assert!(
+            out.is_empty(),
+            "retransmits should not emit duplicate output"
+        );
     }
 
     #[test]
     fn out_of_order_future_segment_is_buffered_until_gap_arrives() {
         let mut flow = FlowState::default();
         let mut out = Vec::new();
-        reassemble_and_emit(&mut flow, 5, b"first", b'|', 1024, &mut out).unwrap();
-        reassemble_and_emit(&mut flow, 16, b"third", b'|', 1024, &mut out).unwrap();
-        assert_eq!(flow.buffer, b"first");
+        let message = build_fix_message("35=0|49=AAA|56=BBB|", b'|');
+        let partial = &message[..message.len() - 4];
+        let split1 = partial.len() / 3;
+        let split2 = (partial.len() * 2) / 3;
+        let part1 = &partial[..split1];
+        let part2 = &partial[split1..split2];
+        let part3 = &partial[split2..];
+
+        reassemble_and_emit(&mut flow, 5, part1, b'|', 1024, &mut out).unwrap();
+        reassemble_and_emit(&mut flow, 5 + split2 as u32, part3, b'|', 1024, &mut out).unwrap();
+        assert_eq!(flow.buffer, part1);
         assert_eq!(
-            flow.pending.get(&16).map(Vec::as_slice),
-            Some(b"third".as_slice())
+            flow.pending.get(&(5 + split2 as u32)).map(Vec::as_slice),
+            Some(part3)
         );
 
-        reassemble_and_emit(&mut flow, 10, b"second", b'|', 1024, &mut out).unwrap();
-        assert_eq!(flow.buffer, b"firstsecondthird");
+        reassemble_and_emit(&mut flow, 5 + split1 as u32, part2, b'|', 1024, &mut out).unwrap();
+        assert_eq!(flow.buffer, partial);
         assert!(
             flow.pending.is_empty(),
             "future segment should drain once the gap is filled"
         );
+        assert!(out.is_empty(), "incomplete messages should stay buffered");
     }
 
     #[test]
-    fn flush_complete_messages_emits_and_retains_tail() {
+    fn flush_complete_messages_emits_messages_and_discards_non_fix_tail() {
         let mut buf = Vec::new();
         let msg1 = build_fix_message("35=0|", b'|');
         let msg2 = build_fix_message("35=1|", b'|');
@@ -558,7 +701,7 @@ mod tests {
             v
         };
         assert_eq!(out, expected_out);
-        assert_eq!(buf, b"partial");
+        assert!(buf.is_empty(), "non-FIX trailing bytes should be discarded");
     }
 
     #[test]
@@ -578,5 +721,55 @@ mod tests {
         let text = String::from_utf8(out).unwrap();
         assert!(text.contains("8=FIX.4.4"));
         assert!(text.ends_with('\n'));
+    }
+
+    #[test]
+    fn flush_complete_messages_resynchronizes_after_leading_garbage() {
+        let msg = build_fix_message("35=0|", b'|');
+        let mut buf = b"garbage".to_vec();
+        buf.extend_from_slice(&msg);
+        let mut scratch = Vec::new();
+        let mut out = Vec::new();
+
+        flush_complete_messages(&mut buf, b'|', &mut scratch, &mut out).unwrap();
+
+        let mut expected = msg.clone();
+        expected.push(b'\n');
+        assert_eq!(out, expected);
+        assert!(
+            buf.is_empty(),
+            "buffer should advance past garbage and message"
+        );
+    }
+
+    #[test]
+    fn flush_complete_messages_skips_midstream_fragment_before_next_message() {
+        let msg = build_fix_message("35=0|", b'|');
+        let mut buf = b"35=0|49=AAA|".to_vec();
+        buf.extend_from_slice(&msg);
+        let mut scratch = Vec::new();
+        let mut out = Vec::new();
+
+        flush_complete_messages(&mut buf, b'|', &mut scratch, &mut out).unwrap();
+
+        let mut expected = msg.clone();
+        expected.push(b'\n');
+        assert_eq!(out, expected);
+        assert!(
+            buf.is_empty(),
+            "midstream fragments should not block later messages"
+        );
+    }
+
+    #[test]
+    fn flush_complete_messages_retains_partial_begin_string() {
+        let mut buf = b"noise8=FI".to_vec();
+        let mut scratch = Vec::new();
+        let mut out = Vec::new();
+
+        flush_complete_messages(&mut buf, b'|', &mut scratch, &mut out).unwrap();
+
+        assert!(out.is_empty());
+        assert_eq!(buf, b"8=FI");
     }
 }

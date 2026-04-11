@@ -168,8 +168,12 @@ fn ensure_successful_pager_exit(command: &str, status: ExitStatus) -> Result<()>
     }
 
     match status.code() {
-        Some(code) => Err(anyhow!("pager command failed ({command}): exit status {code}")),
-        None => Err(anyhow!("pager command failed ({command}): terminated by signal")),
+        Some(code) => Err(anyhow!(
+            "pager command failed ({command}): exit status {code}"
+        )),
+        None => Err(anyhow!(
+            "pager command failed ({command}): terminated by signal"
+        )),
     }
 }
 

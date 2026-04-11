@@ -153,8 +153,8 @@ jobs:
         uses: actions/cache@v5
         with:
           path: |
-            $HOME/.cargo/bin
-            $HOME/.rustup
+            ~/.cargo/bin
+            ~/.rustup
           key: sonar-rust-${{ runner.os }}-${{ steps.toolchain-id.outputs.toolchain }}-${{ steps.lockfile-hash.outputs.hash }}
           restore-keys: |
             sonar-rust-${{ runner.os }}-${{ steps.toolchain-id.outputs.toolchain }}-
@@ -175,11 +175,13 @@ jobs:
           path: target
       - name: Install Rust (for Clippy sensor)
         run: |
+          set -euo pipefail
           CARGO_HOME="${HOME}/.cargo"
           RUSTUP_HOME="${HOME}/.rustup"
           mkdir -p "$CARGO_HOME" "$RUSTUP_HOME"
           echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
-          apt-get update && apt-get install -y curl ca-certificates build-essential
+          sudo apt-get update
+          sudo apt-get install -y curl ca-certificates build-essential
           curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal --default-toolchain ${{ steps.toolchain-id.outputs.toolchain }}
           "$CARGO_HOME/bin/rustup" component add clippy
       - name: Run sonar-scanner
