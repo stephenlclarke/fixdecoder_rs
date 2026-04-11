@@ -24,12 +24,12 @@ jobs:
     name: Prepare FIX specs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Download FIX XML dictionaries
         shell: bash
         run: bash -lc 'source ci/ci_helper.sh && download_fix_specs'
       - name: Upload FIX specs artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fix-specs
           path: resources
@@ -40,7 +40,7 @@ jobs:
     needs: dictionaries
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'))
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Lint workflow YAML
         run: |
           python3 -m pip install --upgrade pip
@@ -59,7 +59,7 @@ jobs:
             exit 1
           fi
       - name: Cache Rust toolchain and cargo bin
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.rustup
@@ -72,12 +72,12 @@ jobs:
         with:
           components: clippy,rustfmt,llvm-tools-preview
       - name: Download FIX specs artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: fix-specs
           path: resources
       - name: Cache cargo registry and target
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -107,19 +107,19 @@ jobs:
             echo "[]" > target/clippy.json
           fi
       - name: Upload coverage artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-xml
           path: target/coverage/coverage.xml
           if-no-files-found: error
       - name: Upload RustSec SARIF artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: rustsec-sarif
           path: target/coverage/rustsec.sarif
           if-no-files-found: warn
       - name: Upload clippy report artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: clippy-json
           path: target/clippy.json
@@ -131,7 +131,7 @@ jobs:
     needs: [quality]
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'))
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Determine toolchain channel
         id: toolchain-id
         run: |
@@ -150,7 +150,7 @@ jobs:
         id: lockfile-hash
         run: echo "hash=$(sha256sum Cargo.lock | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
       - name: Cache Rust toolchain for Clippy
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             $HOME/.cargo/bin
@@ -159,17 +159,17 @@ jobs:
           restore-keys: |
             sonar-rust-${{ runner.os }}-${{ steps.toolchain-id.outputs.toolchain }}-
       - name: Download coverage artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: coverage-xml
           path: target/coverage
       - name: Download RustSec SARIF artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: rustsec-sarif
           path: target/coverage
       - name: Download clippy report artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: clippy-json
           path: target
@@ -247,7 +247,7 @@ jobs:
       FIXDECODER_COMMIT: ${{ github.sha }}
       FIXDECODER_GIT_URL: https://github.com/${{ github.repository }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Compute lockfile hash
         id: lockfile-hash
         shell: bash
@@ -266,12 +266,12 @@ jobs:
           components: clippy,rustfmt,llvm-tools-preview
           targets: ${{ matrix.target }}
       - name: Download FIX specs artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: fix-specs
           path: resources
       - name: Cache cargo registry and target
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -313,12 +313,12 @@ jobs:
             exit 1
           fi
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fixdecoder-${{ matrix.asset_suffix }}
           path: dist/fixdecoder-${{ matrix.asset_suffix }}${{ matrix.ext }}
       - name: Upload pcap2fix artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pcap2fix-${{ matrix.asset_suffix }}
           path: dist/pcap2fix-${{ matrix.asset_suffix }}${{ matrix.ext }}
@@ -331,7 +331,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Determine release version from tag
         id: version
         run: |
@@ -349,7 +349,7 @@ jobs:
           echo "version=${tag_version}" >> "${GITHUB_OUTPUT}"
           echo "tag_name=${ref}" >> "${GITHUB_OUTPUT}"
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: "*"
           path: dist
