@@ -15,12 +15,18 @@ fn fix_message(body: &str) -> String {
 #[test]
 fn decodes_single_message_from_stdin() {
     let msg = fix_message("35=0");
-    cargo_bin_cmd!("fixdecoder")
+    let assert = cargo_bin_cmd!("fixdecoder")
         .arg("--fix=44")
         .write_stdin(msg)
         .assert()
-        .success()
-        .stdout(contains("BeginString").and(contains("MsgType")));
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(
+        !stdout.starts_with("fixdecoder "),
+        "normal decode output should not start with a version banner: {stdout}"
+    );
+    assert!(stdout.contains("BeginString"));
+    assert!(stdout.contains("MsgType"));
 }
 
 #[test]
@@ -74,4 +80,123 @@ fn override_is_honoured_with_fallback() {
         .assert()
         .success()
         .stdout(contains("ApplVerID"));
+}
+
+#[test]
+fn version_flag_prints_only_version_information() {
+    let assert = cargo_bin_cmd!("fixdecoder")
+        .arg("--version")
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(
+        stdout.starts_with("fixdecoder "),
+        "version output should begin with the version banner: {stdout}"
+    );
+    assert!(
+        !stdout.contains("BeginString"),
+        "version output should not decode messages: {stdout}"
+    );
+}
+
+#[test]
+fn default_args_env_applies_cli_flags() {
+    let msg = fix_message("35=0");
+    cargo_bin_cmd!("fixdecoder")
+        .env("FIXDECODER_DEFAULT_ARGS", "--fix=44 --number")
+        .write_stdin(msg)
+        .assert()
+        .success()
+        .stdout(contains("     1 | "));
+}
+
+#[test]
+fn explicit_cli_args_override_default_args_env() {
+    let msg = fix_message("35=0");
+    cargo_bin_cmd!("fixdecoder")
+        .env("FIXDECODER_DEFAULT_ARGS", "--fix=45")
+        .arg("--fix=44")
+        .write_stdin(msg)
+        .assert()
+        .success()
+        .stdout(contains("BeginString"));
+}
+
+#[test]
+fn default_args_env_rejects_version_flag() {
+    cargo_bin_cmd!("fixdecoder")
+        .env("FIXDECODER_DEFAULT_ARGS", "--version")
+        .assert()
+        .failure()
+        .stderr(contains("FIXDECODER_DEFAULT_ARGS").and(contains("--help or --version")));
+}
+
+#[test]
+fn explicit_version_ignores_invalid_default_args_env() {
+    cargo_bin_cmd!("fixdecoder")
+        .env("FIXDECODER_DEFAULT_ARGS", "--definitely-not-a-real-flag")
+        .arg("--version")
+        .assert()
+        .success()
+        .stdout(contains("fixdecoder "));
+}
+
+#[test]
+fn explicit_help_ignores_invalid_default_args_env() {
+    cargo_bin_cmd!("fixdecoder")
+        .env("FIXDECODER_DEFAULT_ARGS", "--definitely-not-a-real-flag")
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(contains("Usage: fixdecoder"));
+}
+
+#[test]
+fn plain_overrides_number_from_default_args_env() {
+    let msg = fix_message("35=0");
+    let assert = cargo_bin_cmd!("fixdecoder")
+        .env("FIXDECODER_DEFAULT_ARGS", "--number")
+        .arg("--plain")
+        .write_stdin(msg)
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(
+        !stdout.contains("     1 | "),
+        "--plain should suppress line numbers even when defaults enable them: {stdout}"
+    );
+}
+
+#[test]
+fn number_flag_prefixes_input_lines() {
+    let msg = fix_message("35=0");
+    cargo_bin_cmd!("fixdecoder")
+        .args(["--fix=44", "--number"])
+        .write_stdin(msg)
+        .assert()
+        .success()
+        .stdout(contains("     1 | "));
+}
+
+#[test]
+fn duplicate_fix_flags_are_rejected() {
+    cargo_bin_cmd!("fixdecoder")
+        .args(["--fix=44", "--fix=50", "--info"])
+        .assert()
+        .failure();
+}
+
+#[test]
+fn explicit_header_style_renders_source_banner_for_files() {
+    let mut file = NamedTempFile::new().expect("temp file");
+    let msg = fix_message("35=0");
+    write!(file, "{msg}").expect("write temp");
+    let expected = format!("-- {} ", file.path().display());
+
+    cargo_bin_cmd!("fixdecoder")
+        .args(["--fix=44", "--style=header"])
+        .arg(file.path())
+        .assert()
+        .success()
+        .stdout(contains(expected));
 }

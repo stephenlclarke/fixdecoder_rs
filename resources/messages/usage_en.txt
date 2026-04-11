@@ -27,10 +27,17 @@ Command line option examples:
 
     $ fixdecoder --info
 
-  Prettify FIX log files with optional validation and obfuscation; if output is piped then colour is disabled by
-  default but can be forced on with --colour=yes:
+  Prettify FIX log files with optional validation and obfuscation. Bat-style
+  viewing controls are available via --style, --plain, --number, --paging,
+  --pager, and --nowrap. If output is piped then colour is disabled by default
+  but can be forced on with --colour=yes or --color=always. Shell-style
+  default options may also be supplied through FIXDECODER_DEFAULT_ARGS:
 
-    fixdecoder [--xml=FILE --xml=FILE2 ...] [--validate] [--colour=yes|no] [--secret] [--summary] [--follow] [--fix=VER] [--delimiter=CHAR] [file1.log file2.log ...]
+    fixdecoder [--xml=FILE --xml=FILE2 ...] [--validate]
+               [--colour=yes|no|auto] [--style=STYLE] [--plain]
+               [--number] [--paging=auto|never|always] [--pager=CMD]
+               [--nowrap] [--secret] [--summary] [--follow]
+               [--fix=VER] [--delimiter=CHAR] [file1.log file2.log ...]
 
     Validate and Obfuscate a FIX logfile.
 
@@ -42,6 +49,24 @@ Command line option examples:
     down the pipe chain.
 
     $ grep '35=D' logs/fix.log | fixdecoder --colour=yes --delimiter='|' | less
+
+    Show bat-style file headers and line numbers, but disable paging for
+    follow-mode output:
+
+    $ fixdecoder --style=header,grid --number --paging=never --follow logs/fix.log
+
+    Enable 10-column horizontal scrolling in the pager for wide decoded
+    lines. Without --nowrap, wrapped paging stays wrapped even if LESS
+    requests chopped lines:
+
+    $ fixdecoder --paging=always --nowrap logs/fix.log
+
+    Apply default viewing options from the environment. Command-line
+    values are applied afterwards and override single-value defaults.
+    Keep input files on the real command line:
+
+    $ export FIXDECODER_DEFAULT_ARGS='--style=full --paging=always --nowrap'
+    $ fixdecoder logs/fix.log
 
     Force the decoding of a FIX log to use the FIX 4.4 dictionary. Only uses the version of the FIX dictionary
     specified in the FIX message header if the tag being processed is not defined in the override dictionary.

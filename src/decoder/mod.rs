@@ -16,6 +16,6 @@ pub use display::{
     list_all_tags, print_component_columns, print_message_columns, print_tag_details,
     print_tags_in_columns,
 };
-pub use prettifier::{PrettifyContext, disable_output_colours, prettify_files};
+pub use prettifier::{OutputStyle, PrettifyContext, disable_output_colours, prettify_files};
 pub use schema::FixDictionary;
 pub use tag_lookup::register_dictionary as register_fix_dictionary;
