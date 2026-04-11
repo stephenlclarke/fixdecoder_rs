@@ -133,6 +133,30 @@ mod tests {
     use crate::fix::SENSITIVE_TAG_NAMES;
 
     #[test]
+    fn disabled_obfuscator_returns_original_line_and_reset_is_noop() {
+        let obfuscator = Obfuscator::from_sensitive_tags(&SENSITIVE_TAG_NAMES, false);
+        let line = "49=ABC\u{0001}999=plain\u{0001}";
+        assert_eq!(obfuscator.enabled_line(line), line);
+        assert_eq!(obfuscator.obfuscate_line(line), line);
+        obfuscator.reset();
+        assert_eq!(obfuscator.enabled_line(line), line);
+    }
+
+    #[test]
+    fn obfuscate_line_leaves_non_sensitive_and_malformed_fragments_unchanged() {
+        let obfuscator = Obfuscator::from_sensitive_tags(&SENSITIVE_TAG_NAMES, true);
+        let line = "foo\u{0001}999=plain\u{0001}";
+        assert_eq!(obfuscator.obfuscate_line(line), line);
+    }
+
+    #[test]
+    fn split_once_accepts_equals_and_soh_delimiters() {
+        assert_eq!(split_once("49=ABC"), Some(("49", "ABC")));
+        assert_eq!(split_once("49\u{0001}ABC"), Some(("49", "ABC")));
+        assert_eq!(split_once("no-delimiter"), None);
+    }
+
+    #[test]
     fn reset_starts_aliases_over() {
         let obfuscator = Obfuscator::from_sensitive_tags(&SENSITIVE_TAG_NAMES, true);
         let first = obfuscator.obfuscate_line("49=ABC\u{0001}");

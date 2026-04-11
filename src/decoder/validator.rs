@@ -479,7 +479,7 @@ mod tests {
     use super::*;
     use crate::decoder::schema::{
         ComponentContainer, ComponentDef, Field, FieldContainer, FieldRef, FixDictionary, GroupDef,
-        Message, MessageContainer, ValuesWrapper,
+        Message, MessageContainer, Value, ValuesWrapper,
     };
 
     const SOH: &str = "\u{0001}";
@@ -490,6 +490,22 @@ mod tests {
             number,
             field_type: field_type.to_string(),
             values: Vec::new(),
+            values_wrapper: ValuesWrapper::default(),
+        }
+    }
+
+    fn enum_field(name: &str, number: u32, field_type: &str, values: &[(&str, &str)]) -> Field {
+        Field {
+            name: name.to_string(),
+            number,
+            field_type: field_type.to_string(),
+            values: values
+                .iter()
+                .map(|(enumeration, description)| Value {
+                    enumeration: (*enumeration).to_string(),
+                    description: (*description).to_string(),
+                })
+                .collect(),
             values_wrapper: ValuesWrapper::default(),
         }
     }
@@ -506,8 +522,12 @@ mod tests {
                     field("BodyLength", 9, "LENGTH"),
                     field("MsgType", 35, "STRING"),
                     field("CheckSum", 10, "STRING"),
+                    enum_field("Side", 54, "CHAR", &[("1", "Buy"), ("2", "Sell")]),
+                    field("TransactTime", 60, "UTCTIMESTAMP"),
                     field("NoItems", 100, "NUMINGROUP"),
                     field("ItemValue", 101, "STRING"),
+                    field("ItemCode", 102, "STRING"),
+                    field("ItemExtra", 103, "STRING"),
                 ],
             },
             messages: MessageContainer {
@@ -522,10 +542,20 @@ mod tests {
                     groups: vec![GroupDef {
                         name: "NoItems".to_string(),
                         required: Some("Y".to_string()),
-                        fields: vec![FieldRef {
-                            name: "ItemValue".to_string(),
-                            required: Some("N".to_string()),
-                        }],
+                        fields: vec![
+                            FieldRef {
+                                name: "ItemValue".to_string(),
+                                required: Some("N".to_string()),
+                            },
+                            FieldRef {
+                                name: "ItemCode".to_string(),
+                                required: Some("N".to_string()),
+                            },
+                            FieldRef {
+                                name: "ItemExtra".to_string(),
+                                required: Some("N".to_string()),
+                            },
+                        ],
                         groups: Vec::new(),
                         components: Vec::new(),
                     }],
@@ -651,5 +681,130 @@ mod tests {
             report.tag_errors.contains_key(&35),
             "tag error map should include tag 35 when missing"
         );
+    }
+
+    #[test]
+    fn detects_unknown_msg_type() {
+        let dict = test_lookup();
+        let msg = build_message(&[(35, "Q"), (100, "0")], None);
+        let report = validate_fix_message(&msg, &dict);
+        assert!(
+            report
+                .errors
+                .iter()
+                .any(|e| e.contains("Unknown MsgType: Q")),
+            "expected unknown MsgType error, got {:?}",
+            report.errors
+        );
+        assert!(
+            report
+                .tag_errors
+                .get(&35)
+                .is_some_and(|errs| errs.iter().any(|e| e.contains("Unknown MsgType: Q")))
+        );
+    }
+
+    #[test]
+    fn detects_invalid_enum_and_type() {
+        let dict = test_lookup();
+        let msg = build_message(&[(35, "Z"), (54, "LONG"), (100, "0")], None);
+        let report = validate_fix_message(&msg, &dict);
+        assert!(
+            report
+                .errors
+                .iter()
+                .any(|e| e.contains("Invalid enum value 'LONG'")),
+            "expected enum validation error, got {:?}",
+            report.errors
+        );
+        assert!(
+            report
+                .errors
+                .iter()
+                .any(|e| e.contains("Invalid type: expected CHAR")),
+            "expected type validation error, got {:?}",
+            report.errors
+        );
+    }
+
+    #[test]
+    fn detects_invalid_numingroup_and_tag_outside_group() {
+        let dict = test_lookup();
+        let msg = build_message(&[(35, "Z"), (100, "oops"), (101, "ALPHA")], None);
+        let report = validate_fix_message(&msg, &dict);
+        assert!(
+            report
+                .errors
+                .iter()
+                .any(|e| e.contains("Invalid NumInGroup value 'oops'")),
+            "expected invalid NumInGroup error, got {:?}",
+            report.errors
+        );
+        assert!(
+            report
+                .errors
+                .iter()
+                .any(|e| e.contains("appears outside of repeating group 100")),
+            "expected out-of-group error, got {:?}",
+            report.errors
+        );
+    }
+
+    #[test]
+    fn detects_out_of_order_tags_within_group() {
+        let dict = test_lookup();
+        let msg = build_message(
+            &[
+                (35, "Z"),
+                (100, "1"),
+                (101, "ALPHA"),
+                (103, "EXTRA"),
+                (102, "CODE"),
+            ],
+            None,
+        );
+        let report = validate_fix_message(&msg, &dict);
+        assert!(
+            report
+                .errors
+                .iter()
+                .any(|e| e.contains("Tag 102 (ItemCode) out of order within repeating group 100")),
+            "expected group ordering error, got {:?}",
+            report.errors
+        );
+    }
+
+    #[test]
+    fn missing_checksum_is_reported() {
+        let dict = test_lookup();
+        let msg = format!("8=FIX.4.4{SOH}9=010{SOH}35=Z{SOH}100=0{SOH}");
+        let report = validate_fix_message(&msg, &dict);
+        assert!(
+            report
+                .errors
+                .iter()
+                .any(|e| e.contains("Missing required checksum tag 10")),
+            "expected missing checksum error, got {:?}",
+            report.errors
+        );
+    }
+
+    #[test]
+    fn helper_type_validators_cover_temporal_formats() {
+        assert!(is_valid_type("20240101-00:00:00", "UTCTIMESTAMP"));
+        assert!(!is_valid_type("2024-01-01 00:00:00", "UTCTIMESTAMP"));
+        assert!(is_valid_type("20240101", "UTCDATEONLY"));
+        assert!(is_valid_type("12:34:56.789", "UTCTIMEONLY"));
+        assert!(!is_valid_type("25:00:00", "UTCTIMEONLY"));
+        assert!(is_valid_type("202401", "MONTHYEAR"));
+        assert!(is_valid_type("202401w3", "MONTHYEAR"));
+        assert!(!is_valid_type("2024-13", "MONTHYEAR"));
+    }
+
+    #[test]
+    fn helper_checksum_and_body_length_fall_back_when_fields_are_missing() {
+        let msg = format!("8=FIX.4.4{SOH}9=005{SOH}35=Z{SOH}");
+        assert_eq!(calculate_checksum(&msg), -1);
+        assert_eq!(compute_actual_body_length(&msg), None);
     }
 }
