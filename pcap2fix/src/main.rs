@@ -772,4 +772,108 @@ mod tests {
         assert!(out.is_empty());
         assert_eq!(buf, b"8=FI");
     }
+
+    #[test]
+    fn parse_delimiter_rejects_invalid_values() {
+        assert!(parse_delimiter("long").is_err());
+        assert!(parse_delimiter("\\xGG").is_err());
+    }
+
+    #[test]
+    fn find_message_end_rejects_invalid_body_length_and_checksum_fields() {
+        assert!(matches!(
+            find_message_end(b"8=FIX.4.4|35=0|10=000|", b'|'),
+            MessageEnd::Invalid
+        ));
+        assert!(matches!(
+            find_message_end(b"8=FIX.4.4|9=abc|35=0|10=000|", b'|'),
+            MessageEnd::Invalid
+        ));
+        assert!(matches!(
+            find_message_end(b"8=FIX.4.4|9=4|35=0|10=xyz|", b'|'),
+            MessageEnd::Invalid
+        ));
+        assert!(matches!(
+            find_message_end(b"8=FIX.4.4|9=4|35=0|10=000!", b'|'),
+            MessageEnd::Invalid
+        ));
+    }
+
+    #[test]
+    fn retain_partial_begin_string_clears_non_matching_tail() {
+        let mut buf = b"trailing-noise".to_vec();
+        retain_partial_begin_string(&mut buf);
+        assert!(buf.is_empty());
+    }
+
+    #[test]
+    fn append_segment_trims_overlap_and_store_future_segment_prefers_longest() {
+        let mut flow = FlowState {
+            next_seq: Some(14),
+            buffer: b"8=FIX.4.4|9=".to_vec(),
+            pending: BTreeMap::new(),
+            last_seen: Instant::now(),
+        };
+
+        append_segment(&mut flow, 12, b"9=5|35=0|");
+        assert_eq!(flow.buffer, b"8=FIX.4.4|9=5|35=0|");
+
+        store_future_segment(&mut flow, 30, b"short");
+        store_future_segment(&mut flow, 30, b"longer-segment");
+        assert_eq!(
+            flow.pending.get(&30).map(Vec::as_slice),
+            Some(&b"longer-segment"[..])
+        );
+    }
+
+    #[test]
+    fn reassembly_overflow_clears_flow_state() {
+        let mut flow = FlowState::default();
+        let mut out = Vec::new();
+        let err = reassemble_and_emit(&mut flow, 1, b"0123456789", b'|', 4, &mut out).unwrap_err();
+
+        assert!(err.to_string().contains("flow exceeded max buffer"));
+        assert!(flow.buffer.is_empty());
+        assert!(flow.pending.is_empty());
+        assert!(flow.next_seq.is_none());
+    }
+
+    #[test]
+    fn evict_idle_drops_stale_flows() {
+        let mut flows = HashMap::new();
+        flows.insert(
+            FlowKey {
+                src: "10.0.0.1".parse().unwrap(),
+                dst: "10.0.0.2".parse().unwrap(),
+                sport: 5000,
+                dport: 5001,
+            },
+            FlowState {
+                last_seen: Instant::now() - Duration::from_secs(120),
+                ..FlowState::default()
+            },
+        );
+        flows.insert(
+            FlowKey {
+                src: "10.0.0.3".parse().unwrap(),
+                dst: "10.0.0.4".parse().unwrap(),
+                sport: 5002,
+                dport: 5003,
+            },
+            FlowState::default(),
+        );
+
+        evict_idle(&mut flows, Duration::from_secs(60));
+
+        assert_eq!(flows.len(), 1);
+        assert!(flows.keys().any(|flow| flow.sport == 5002));
+    }
+
+    #[test]
+    fn open_reader_errors_for_missing_file() {
+        let err = open_reader("/definitely/missing/file.pcap")
+            .err()
+            .expect("missing file should error");
+        assert!(err.to_string().contains("open pcap"));
+    }
 }

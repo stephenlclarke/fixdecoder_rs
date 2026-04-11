@@ -200,3 +200,140 @@ fn explicit_header_style_renders_source_banner_for_files() {
         .success()
         .stdout(contains(expected));
 }
+
+#[test]
+fn info_flag_lists_available_dictionaries_and_highlights_selection() {
+    cargo_bin_cmd!("fixdecoder")
+        .args(["--fix=44", "--info"])
+        .assert()
+        .success()
+        .stdout(
+            contains("Available FIX Dictionaries")
+                .and(contains("Loaded dictionaries"))
+                .and(contains("FIX44")),
+        );
+}
+
+#[test]
+fn message_listing_works_in_plain_and_column_modes() {
+    cargo_bin_cmd!("fixdecoder")
+        .args(["--fix=44", "--message"])
+        .assert()
+        .success()
+        .stdout(contains("Heartbeat").and(contains("ExecutionReport")));
+
+    cargo_bin_cmd!("fixdecoder")
+        .args(["--fix=44", "--message", "--column"])
+        .assert()
+        .success()
+        .stdout(contains("Heartbeat").and(contains("Logon")));
+}
+
+#[test]
+fn message_detail_accepts_msg_type_lookup() {
+    cargo_bin_cmd!("fixdecoder")
+        .args([
+            "--fix=44",
+            "--message",
+            "0",
+            "--verbose",
+            "--header",
+            "--trailer",
+            "--column",
+        ])
+        .assert()
+        .success()
+        .stdout(
+            contains("Message: ")
+                .and(contains("Heartbeat"))
+                .and(contains("Header"))
+                .and(contains("Trailer"))
+                .and(contains("HEARTBEAT")),
+        );
+}
+
+#[test]
+fn missing_message_is_reported() {
+    cargo_bin_cmd!("fixdecoder")
+        .args(["--fix=44", "--message", "NoSuchMessage"])
+        .assert()
+        .success()
+        .stdout(contains("Message not found: NoSuchMessage"));
+}
+
+#[test]
+fn tag_listing_works_in_plain_and_column_modes() {
+    cargo_bin_cmd!("fixdecoder")
+        .args(["--fix=44", "--tag"])
+        .assert()
+        .success()
+        .stdout(contains("BeginString").and(contains("CheckSum")));
+
+    cargo_bin_cmd!("fixdecoder")
+        .args(["--fix=44", "--tag", "--column"])
+        .assert()
+        .success()
+        .stdout(contains("BeginString").and(contains("ClOrdID")));
+}
+
+#[test]
+fn tag_detail_verbose_columns_show_enum_values() {
+    cargo_bin_cmd!("fixdecoder")
+        .args(["--fix=44", "--tag", "54", "--verbose", "--column"])
+        .assert()
+        .success()
+        .stdout(contains("Side").and(contains("BUY")).and(contains("SELL")));
+}
+
+#[test]
+fn invalid_and_missing_tags_are_reported() {
+    cargo_bin_cmd!("fixdecoder")
+        .args(["--fix=44", "--tag", "nope"])
+        .assert()
+        .failure()
+        .stderr(contains("Invalid tag: nope"));
+
+    cargo_bin_cmd!("fixdecoder")
+        .args(["--fix=44", "--tag", "999999"])
+        .assert()
+        .success()
+        .stdout(contains("Tag not found: 999999"));
+}
+
+#[test]
+fn component_listing_works_in_plain_and_column_modes() {
+    cargo_bin_cmd!("fixdecoder")
+        .args(["--fix=44", "--component"])
+        .assert()
+        .success()
+        .stdout(contains("Header").and(contains("CommissionData")));
+
+    cargo_bin_cmd!("fixdecoder")
+        .args(["--fix=44", "--component", "--column"])
+        .assert()
+        .success()
+        .stdout(contains("Header").and(contains("Parties")));
+}
+
+#[test]
+fn component_detail_verbose_columns_show_fields() {
+    cargo_bin_cmd!("fixdecoder")
+        .args(["--fix=44", "--component", "Header", "--verbose", "--column"])
+        .assert()
+        .success()
+        .stdout(
+            contains("Component: ")
+                .and(contains("Header"))
+                .and(contains("BeginString"))
+                .and(contains("NEW_ORDER_SINGLE")),
+        );
+}
+
+#[test]
+fn missing_component_is_reported() {
+    cargo_bin_cmd!("fixdecoder")
+        .args(["--fix=44", "--component", "NoSuchComponent"])
+        .assert()
+        .success()
+        .stdout(contains("Component not found: NoSuchComponent"));
+}
