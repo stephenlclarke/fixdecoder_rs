@@ -18,17 +18,21 @@ use clap::error::ErrorKind;
 use clap::parser::ValueSource;
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use decoder::{
-    DisplayStyle, FixDictionary, PrettifyContext, disable_output_colours, display_component,
-    display_message, list_all_components, list_all_messages, list_all_tags, prettify_files,
-    print_component_columns, print_message_columns, print_tag_details, print_tags_in_columns,
-    register_fix_dictionary, schema::SchemaTree, summary::OrderSummary, tag_lookup,
+    DisplayStyle, FixDictionary, OutputStyle, PrettifyContext, disable_output_colours,
+    display_component, display_message, list_all_components, list_all_messages, list_all_tags,
+    prettify_files, print_component_columns, print_message_columns, print_tag_details,
+    print_tags_in_columns, register_fix_dictionary, schema::SchemaTree, summary::OrderSummary,
+    tag_lookup,
 };
 use std::collections::HashMap;
+use std::env;
+use std::ffi::OsString;
 use std::fs;
 use std::io;
 use std::io::IsTerminal;
 use std::io::Write;
-use std::process;
+use std::path::Path;
+use std::process::{self, Child, ChildStdin, Command as ProcessCommand, ExitStatus, Stdio};
 use std::sync::OnceLock;
 use std::sync::atomic::Ordering;
 
@@ -45,6 +49,9 @@ const VERSION: &str = match option_env!("FIXDECODER_VERSION") {
     Some(tag) => tag,
     None => env!("CARGO_PKG_VERSION"),
 };
+
+/// Shell-style default arguments applied ahead of the real CLI.
+const DEFAULT_ARGS_ENV: &str = "FIXDECODER_DEFAULT_ARGS";
 
 /// Determine the current Git branch, defaulting to `main` when the metadata
 /// was not injected during the build.  This is UK spelling friendly as the
@@ -93,6 +100,135 @@ fn version_str() -> &'static str {
     VERSION_STR.get_or_init(version_string).as_str()
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PagingMode {
+    Auto,
+    Never,
+    Always,
+}
+
+impl PagingMode {
+    fn should_use_pager(self, stdout_is_terminal: bool, follow: bool) -> bool {
+        if !stdout_is_terminal || follow {
+            return false;
+        }
+        matches!(self, Self::Auto | Self::Always)
+    }
+}
+
+struct PagerWriter {
+    child: Child,
+    stdin: Option<ChildStdin>,
+    command: String,
+}
+
+impl PagerWriter {
+    fn new(command: &str, nowrap: bool) -> Result<Self> {
+        let command = normalise_less_command(command, nowrap)?;
+        let mut child_cmd = ProcessCommand::new("sh");
+        child_cmd.arg("-c").arg(&command).stdin(Stdio::piped());
+        if uses_less_pager(&command) {
+            match effective_less_options(env::var("LESS").ok().as_deref(), nowrap) {
+                Some(options) => {
+                    child_cmd.env("LESS", options);
+                }
+                None => {
+                    child_cmd.env_remove("LESS");
+                }
+            }
+        }
+        let mut child = child_cmd
+            .spawn()
+            .with_context(|| format!("failed to launch pager: {command}"))?;
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| anyhow!("failed to acquire pager stdin"))?;
+        Ok(Self {
+            child,
+            stdin: Some(stdin),
+            command,
+        })
+    }
+
+    fn finish(&mut self) -> Result<()> {
+        if let Some(mut stdin) = self.stdin.take() {
+            let _ = stdin.flush();
+            drop(stdin);
+        }
+        let status = self.child.wait().context("failed to wait for pager")?;
+        ensure_successful_pager_exit(&self.command, status)?;
+        Ok(())
+    }
+}
+
+fn ensure_successful_pager_exit(command: &str, status: ExitStatus) -> Result<()> {
+    if status.success() {
+        return Ok(());
+    }
+
+    match status.code() {
+        Some(code) => Err(anyhow!("pager command failed ({command}): exit status {code}")),
+        None => Err(anyhow!("pager command failed ({command}): terminated by signal")),
+    }
+}
+
+impl Write for PagerWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        if let Some(stdin) = self.stdin.as_mut() {
+            match stdin.write(buf) {
+                Ok(written) => Ok(written),
+                Err(err) if err.kind() == io::ErrorKind::BrokenPipe => Ok(buf.len()),
+                Err(err) => Err(err),
+            }
+        } else {
+            Ok(buf.len())
+        }
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        if let Some(stdin) = self.stdin.as_mut() {
+            match stdin.flush() {
+                Ok(()) => Ok(()),
+                Err(err) if err.kind() == io::ErrorKind::BrokenPipe => Ok(()),
+                Err(err) => Err(err),
+            }
+        } else {
+            Ok(())
+        }
+    }
+}
+
+enum AppWriter {
+    Stdout(io::Stdout),
+    Pager(PagerWriter),
+}
+
+impl AppWriter {
+    fn finish(&mut self) -> Result<()> {
+        match self {
+            Self::Stdout(stdout) => stdout.flush().context("failed to flush stdout"),
+            Self::Pager(pager) => pager.finish(),
+        }
+    }
+}
+
+impl Write for AppWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        match self {
+            Self::Stdout(stdout) => stdout.write(buf),
+            Self::Pager(pager) => pager.write(buf),
+        }
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        match self {
+            Self::Stdout(stdout) => stdout.flush(),
+            Self::Pager(pager) => pager.flush(),
+        }
+    }
+}
+
 fn install_interrupt_handler() -> Result<()> {
     ctrlc::set_handler(|| {
         let _ = io::stdout().write_all(b"\n\n");
@@ -119,7 +255,6 @@ fn main() {
 /// here, so the structure favours clarity over cleverness.
 fn run() -> Result<i32> {
     install_interrupt_handler()?;
-    println!("{}", version_string());
 
     let Some(opts) = parse_cli_options()? else {
         return Ok(0);
@@ -131,7 +266,8 @@ fn run() -> Result<i32> {
         return Ok(0);
     }
 
-    apply_colour_preferences(&opts);
+    let stdout_is_terminal = std::io::stdout().is_terminal();
+    apply_colour_preferences(&opts, stdout_is_terminal);
 
     let obfuscator = fix::create_obfuscator(opts.secret);
     let files = resolve_input_files(&opts);
@@ -141,19 +277,23 @@ fn run() -> Result<i32> {
         .fix_from_user
         .then(|| normalise_fix_key(&opts.fix_version))
         .flatten();
-    let mut stdout = io::stdout();
+    let mut output = create_output_writer(&opts, stdout_is_terminal)?;
     let mut stderr = io::stderr();
-    let mut ctx = build_context(
-        &obfuscator,
-        &mut summary,
-        fix_override.as_deref(),
-        &opts,
-        &mut stdout,
-        &mut stderr,
-    );
-    let code = prettify_files(&files, &mut ctx);
+    let code = {
+        let mut ctx = build_context(
+            &obfuscator,
+            &mut summary,
+            fix_override.as_deref(),
+            &opts,
+            stdout_is_terminal,
+            &mut output,
+            &mut stderr,
+        );
+        prettify_files(&files, &mut ctx)
+    };
 
-    warn_on_override_fallback(ctx.err_out);
+    warn_on_override_fallback(&mut stderr);
+    output.finish()?;
 
     Ok(final_exit_code(code))
 }
@@ -174,12 +314,70 @@ fn parse_cli_options() -> Result<Option<CliOptions>> {
         },
     };
 
-    let opts = CliOptions::from_matches(&matches)?;
-    if opts.show_version {
+    if matches.get_flag("version") {
+        println!("{}", version_string());
         return Ok(None);
     }
 
+    let default_matches = parse_default_arg_matches(default_args_env_value()?.as_deref())?;
+    let opts = CliOptions::from_matches(&matches, default_matches.as_ref())?;
+
     Ok(Some(opts))
+}
+
+fn default_args_env_value() -> Result<Option<String>> {
+    let value = match env::var(DEFAULT_ARGS_ENV) {
+        Ok(value) => Some(value),
+        Err(env::VarError::NotPresent) => None,
+        Err(env::VarError::NotUnicode(_)) => {
+            return Err(anyhow!(
+                "{DEFAULT_ARGS_ENV} must contain valid UTF-8 command-line arguments"
+            ));
+        }
+    };
+    Ok(value)
+}
+
+fn parse_default_arg_matches(raw_defaults: Option<&str>) -> Result<Option<ArgMatches>> {
+    let Some(raw_defaults) = raw_defaults
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(None);
+    };
+
+    let defaults = shlex::split(raw_defaults)
+        .ok_or_else(|| anyhow!("{DEFAULT_ARGS_ENV} contains invalid shell-style quoting"))?;
+    let mut argv = Vec::with_capacity(defaults.len() + 1);
+    argv.push(OsString::from("fixdecoder"));
+    argv.extend(defaults.into_iter().map(OsString::from));
+
+    let matches = match build_cli().try_get_matches_from(argv) {
+        Ok(matches) => matches,
+        Err(err) => match err.kind() {
+            ErrorKind::DisplayHelp | ErrorKind::DisplayVersion => {
+                return Err(anyhow!(
+                    "{DEFAULT_ARGS_ENV} may not include --help or --version"
+                ));
+            }
+            _ => {
+                return Err(anyhow!("invalid {DEFAULT_ARGS_ENV}: {err}"));
+            }
+        },
+    };
+
+    if matches.get_many::<String>("files").is_some() {
+        return Err(anyhow!(
+            "{DEFAULT_ARGS_ENV} may not include input files; pass files on the command line"
+        ));
+    }
+    if matches.get_flag("version") {
+        return Err(anyhow!(
+            "{DEFAULT_ARGS_ENV} may not include --help or --version"
+        ));
+    }
+
+    Ok(Some(matches))
 }
 
 fn prepare_schema(opts: &CliOptions) -> Result<(HashMap<String, CustomDictionary>, SchemaTree)> {
@@ -189,12 +387,12 @@ fn prepare_schema(opts: &CliOptions) -> Result<(HashMap<String, CustomDictionary
     Ok((custom_dicts, schema))
 }
 
-fn apply_colour_preferences(opts: &CliOptions) {
+fn apply_colour_preferences(opts: &CliOptions, stdout_is_terminal: bool) {
     if let Some(force_colour) = opts.colour {
         if !force_colour {
             disable_output_colours();
         }
-    } else if !std::io::stdout().is_terminal() {
+    } else if !stdout_is_terminal {
         disable_output_colours();
     }
 }
@@ -212,18 +410,24 @@ fn build_context<'a>(
     summary: &'a mut Option<OrderSummary>,
     fix_override: Option<&'a str>,
     opts: &'a CliOptions,
+    stdout_is_terminal: bool,
     out: &'a mut dyn Write,
     err_out: &'a mut dyn Write,
 ) -> PrettifyContext<'a> {
+    let pager_active = opts
+        .paging
+        .should_use_pager(stdout_is_terminal, opts.follow);
     PrettifyContext {
         out,
         err_out,
         obfuscator,
         display_delimiter: opts.delimiter,
+        style: opts.style,
+        wide_grid: opts.nowrap && pager_active,
         summary,
         fix_override,
         follow: opts.follow,
-        live_status_enabled: std::io::stdout().is_terminal(),
+        live_status_enabled: stdout_is_terminal && !pager_active,
         validation_enabled: opts.validate,
         message_counts: std::collections::HashMap::new(),
         counts_dirty: false,
@@ -231,6 +435,187 @@ fn build_context<'a>(
     }
 }
 
+fn create_output_writer(opts: &CliOptions, stdout_is_terminal: bool) -> Result<AppWriter> {
+    if !opts
+        .paging
+        .should_use_pager(stdout_is_terminal, opts.follow)
+    {
+        return Ok(AppWriter::Stdout(io::stdout()));
+    }
+
+    let command = resolve_pager_command(opts.pager.as_deref(), opts.paging, opts.nowrap);
+    PagerWriter::new(&command, opts.nowrap).map(AppWriter::Pager)
+}
+
+fn resolve_pager_command(explicit: Option<&str>, mode: PagingMode, nowrap: bool) -> String {
+    if let Some(command) = explicit.filter(|value| !value.trim().is_empty()) {
+        return command.to_string();
+    }
+    if let Ok(command) = env::var("PAGER")
+        && !command.trim().is_empty()
+    {
+        return command;
+    }
+    match mode {
+        PagingMode::Auto => default_less_command(true, nowrap),
+        PagingMode::Always => default_less_command(false, nowrap),
+        PagingMode::Never => "cat".to_string(),
+    }
+}
+
+fn default_less_command(quit_if_one_screen: bool, nowrap: bool) -> String {
+    let mut command = if quit_if_one_screen {
+        String::from("less -FRX")
+    } else {
+        String::from("less -RX")
+    };
+    if nowrap {
+        command.push_str(" -S --shift=10");
+    }
+    command
+}
+
+fn merged_less_options(existing: Option<&str>, extras: &[&str]) -> String {
+    let mut parts: Vec<String> = existing
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.split_whitespace().map(str::to_string).collect())
+        .unwrap_or_default();
+
+    for extra in extras {
+        if !parts.iter().any(|item| item == extra) {
+            parts.push((*extra).to_string());
+        }
+    }
+
+    parts.join(" ")
+}
+
+fn effective_less_options(existing: Option<&str>, nowrap: bool) -> Option<String> {
+    let base = strip_less_horizontal_options(existing);
+    if nowrap {
+        Some(merged_less_options(base.as_deref(), &["-S", "--shift=10"]))
+    } else {
+        base
+    }
+}
+
+fn strip_less_horizontal_options(existing: Option<&str>) -> Option<String> {
+    let tokens: Vec<String> = existing
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.split_whitespace().map(str::to_string).collect())
+        .unwrap_or_default();
+
+    let filtered = strip_less_horizontal_tokens(tokens);
+    if filtered.is_empty() {
+        None
+    } else {
+        Some(filtered.join(" "))
+    }
+}
+
+fn strip_less_horizontal_tokens(tokens: Vec<String>) -> Vec<String> {
+    let mut filtered = Vec::new();
+    let mut tokens = tokens.into_iter().peekable();
+
+    while let Some(token) = tokens.next() {
+        if token == "-S" || token == "--chop-long-lines" {
+            continue;
+        }
+        if token == "-#" || token == "--shift" {
+            let _ = tokens.next();
+            continue;
+        }
+        if token.starts_with("-#") || token.starts_with("--shift=") {
+            continue;
+        }
+        if let Some(compact) = strip_compact_less_short_flags(&token) {
+            if !compact.is_empty() {
+                filtered.push(compact);
+            }
+            continue;
+        }
+        filtered.push(token);
+    }
+
+    filtered
+}
+
+fn strip_compact_less_short_flags(token: &str) -> Option<String> {
+    if !token.starts_with('-') || token.starts_with("--") || token.len() <= 2 {
+        return None;
+    }
+
+    let flags = &token[1..];
+    if !flags.chars().all(|ch| ch.is_ascii_alphabetic()) || !flags.contains('S') {
+        return None;
+    }
+
+    let filtered: String = flags.chars().filter(|&ch| ch != 'S').collect();
+    Some(if filtered.is_empty() {
+        String::new()
+    } else {
+        format!("-{filtered}")
+    })
+}
+
+fn uses_less_pager(command: &str) -> bool {
+    shlex::split(command)
+        .and_then(|parts| parts.first().cloned())
+        .is_some_and(|executable| is_less_executable(&executable))
+}
+
+fn is_less_executable(executable: &str) -> bool {
+    Path::new(executable)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name == "less")
+}
+
+fn uses_shell_syntax(command: &str) -> bool {
+    command
+        .chars()
+        .any(|ch| matches!(ch, '|' | '&' | ';' | '<' | '>' | '$' | '`' | '(' | ')'))
+}
+
+fn normalise_less_command(command: &str, nowrap: bool) -> Result<String> {
+    if uses_shell_syntax(command) {
+        return Ok(command.to_string());
+    }
+    let Some(mut parts) = shlex::split(command) else {
+        return Ok(command.to_string());
+    };
+    if parts
+        .first()
+        .is_none_or(|executable| !is_less_executable(executable))
+    {
+        return Ok(command.to_string());
+    }
+
+    let executable = parts.remove(0);
+    let options = strip_less_horizontal_tokens(parts);
+    let options = if nowrap {
+        strip_less_horizontal_tokens(options)
+    } else {
+        options
+    };
+
+    let mut merged = Vec::with_capacity(options.len() + 3);
+    merged.push(executable);
+    merged.extend(options);
+    if nowrap {
+        if !merged.iter().any(|token| token == "-S") {
+            merged.push("-S".to_string());
+        }
+        if !merged.iter().any(|token| token == "--shift=10") {
+            merged.push("--shift=10".to_string());
+        }
+    }
+
+    shlex::try_join(merged.iter().map(String::as_str))
+        .map_err(|err| anyhow!("failed to normalise pager command: {err}"))
+}
 fn warn_on_override_fallback(err_out: &mut dyn Write) {
     if tag_lookup::override_warn_triggered() {
         let colours = colours::palette();
@@ -304,8 +689,9 @@ fn build_cli() -> Command {
     cmd.arg(
         Arg::new("colour")
             .long("colour")
+            .visible_alias("color")
             .num_args(0..=1)
-            .value_name("yes|no")
+            .value_name("yes|no|auto")
             .require_equals(false)
             .default_missing_value("true")
             .help("Force coloured output"),
@@ -315,6 +701,45 @@ fn build_cli() -> Command {
             .long("delimiter")
             .value_name("CHAR")
             .help("Display delimiter between FIX fields (default: SOH)"),
+    )
+    .arg(
+        Arg::new("style")
+            .long("style")
+            .value_name("STYLE")
+            .help("bat-style decorations: plain,numbers,header,grid,full"),
+    )
+    .arg(
+        Arg::new("plain")
+            .long("plain")
+            .short('p')
+            .action(ArgAction::SetTrue)
+            .help("Disable file headers, grids, and line numbers"),
+    )
+    .arg(
+        Arg::new("number")
+            .long("number")
+            .visible_alias("line-numbers")
+            .short('n')
+            .action(ArgAction::SetTrue)
+            .help("Show input line numbers"),
+    )
+    .arg(
+        Arg::new("paging")
+            .long("paging")
+            .value_name("WHEN")
+            .help("Pager mode: auto, never, or always"),
+    )
+    .arg(
+        Arg::new("pager")
+            .long("pager")
+            .value_name("CMD")
+            .help("Pager command to use when paging is enabled"),
+    )
+    .arg(
+        Arg::new("nowrap")
+            .long("nowrap")
+            .action(ArgAction::SetTrue)
+            .help("Disable wrapping in pager mode and allow horizontal scrolling"),
     )
     .arg(
         Arg::new("version")
@@ -396,7 +821,10 @@ struct CliOptions {
     secret: bool,
     validate: bool,
     colour: Option<bool>,
-    show_version: bool,
+    style: OutputStyle,
+    paging: PagingMode,
+    pager: Option<String>,
+    nowrap: bool,
     summary: bool,
     #[allow(dead_code)]
     follow: bool,
@@ -408,46 +836,112 @@ impl CliOptions {
     /// Translate clap’s `ArgMatches` into our strongly typed `CliOptions`.
     /// The function centralises validation so the rest of the code can assume
     /// sane defaults and bail out early when a user supplies nonsense.
-    fn from_matches(matches: &ArgMatches) -> Result<Self> {
-        let fix_source = matches.value_source("fix");
-        let fix_from_user = fix_source != Some(ValueSource::DefaultValue);
+    fn from_matches(matches: &ArgMatches, default_matches: Option<&ArgMatches>) -> Result<Self> {
+        let fix_from_user = arg_explicit(matches, "fix")
+            || default_matches.is_some_and(|defaults| arg_explicit(defaults, "fix"));
 
-        let xml_paths: Vec<String> = matches
-            .get_many::<String>("xml")
-            .map(|vals| vals.map(|v| v.to_string()).collect())
-            .unwrap_or_default();
+        let xml_paths = merged_values(matches, default_matches, "xml");
 
         let files: Vec<String> = matches
             .get_many::<String>("files")
             .map(|vals| vals.map(|v| v.to_string()).collect())
             .unwrap_or_default();
         Ok(Self {
-            fix_version: matches
-                .get_one::<String>("fix")
+            fix_version: selected_value(matches, default_matches, "fix")
                 .cloned()
                 .unwrap_or_else(|| "44".to_string()),
             fix_from_user,
             xml_paths,
-            message_flag: matches.contains_id("message"),
-            message_value: extract_optional_arg(matches, "message")?,
-            component_flag: matches.contains_id("component"),
-            component_value: extract_optional_arg(matches, "component")?,
-            tag_flag: matches.contains_id("tag"),
-            tag_value: extract_optional_arg(matches, "tag")?,
-            column: matches.get_flag("column"),
-            verbose: matches.get_flag("verbose"),
-            include_header: matches.get_flag("header"),
-            include_trailer: matches.get_flag("trailer"),
-            info: matches.get_flag("info"),
-            secret: matches.get_flag("secret"),
-            validate: matches.get_flag("validate"),
-            colour: parse_colour(matches.get_one::<String>("colour"))?,
-            show_version: matches.get_flag("version"),
-            summary: matches.get_flag("summary"),
-            follow: matches.get_flag("follow"),
+            message_flag: selected_optional_arg_matches(matches, default_matches, "message")
+                .is_some(),
+            message_value: extract_optional_arg_from_sources(matches, default_matches, "message")?,
+            component_flag: selected_optional_arg_matches(matches, default_matches, "component")
+                .is_some(),
+            component_value: extract_optional_arg_from_sources(
+                matches,
+                default_matches,
+                "component",
+            )?,
+            tag_flag: selected_optional_arg_matches(matches, default_matches, "tag").is_some(),
+            tag_value: extract_optional_arg_from_sources(matches, default_matches, "tag")?,
+            column: merged_flag(matches, default_matches, "column"),
+            verbose: merged_flag(matches, default_matches, "verbose"),
+            include_header: merged_flag(matches, default_matches, "header"),
+            include_trailer: merged_flag(matches, default_matches, "trailer"),
+            info: merged_flag(matches, default_matches, "info"),
+            secret: merged_flag(matches, default_matches, "secret"),
+            validate: merged_flag(matches, default_matches, "validate"),
+            colour: parse_colour(selected_value(matches, default_matches, "colour"))?,
+            style: resolve_output_style(matches, default_matches, std::io::stdout().is_terminal())?,
+            paging: parse_paging(selected_value(matches, default_matches, "paging"))?,
+            pager: selected_value(matches, default_matches, "pager").cloned(),
+            nowrap: merged_flag(matches, default_matches, "nowrap"),
+            summary: merged_flag(matches, default_matches, "summary"),
+            follow: merged_flag(matches, default_matches, "follow"),
             files,
-            delimiter: parse_delimiter(matches.get_one::<String>("delimiter"))?,
+            delimiter: parse_delimiter(selected_value(matches, default_matches, "delimiter"))?,
         })
+    }
+}
+
+fn arg_explicit(matches: &ArgMatches, name: &str) -> bool {
+    matches.value_source(name) == Some(ValueSource::CommandLine)
+}
+
+fn selected_value<'a>(
+    matches: &'a ArgMatches,
+    default_matches: Option<&'a ArgMatches>,
+    name: &str,
+) -> Option<&'a String> {
+    if arg_explicit(matches, name) {
+        matches.get_one::<String>(name)
+    } else {
+        default_matches
+            .filter(|defaults| arg_explicit(defaults, name))
+            .and_then(|defaults| defaults.get_one::<String>(name))
+    }
+}
+
+fn merged_values(
+    matches: &ArgMatches,
+    default_matches: Option<&ArgMatches>,
+    name: &str,
+) -> Vec<String> {
+    let mut values: Vec<String> = default_matches
+        .and_then(|defaults| defaults.get_many::<String>(name))
+        .map(|vals| vals.map(|v| v.to_string()).collect())
+        .unwrap_or_default();
+    if let Some(cli_vals) = matches.get_many::<String>(name) {
+        values.extend(cli_vals.map(|v| v.to_string()));
+    }
+    values
+}
+
+fn merged_flag(matches: &ArgMatches, default_matches: Option<&ArgMatches>, name: &str) -> bool {
+    matches.get_flag(name) || default_matches.is_some_and(|defaults| defaults.get_flag(name))
+}
+
+fn selected_optional_arg_matches<'a>(
+    matches: &'a ArgMatches,
+    default_matches: Option<&'a ArgMatches>,
+    name: &str,
+) -> Option<&'a ArgMatches> {
+    if matches.contains_id(name) {
+        Some(matches)
+    } else {
+        default_matches.filter(|defaults| defaults.contains_id(name))
+    }
+}
+
+fn extract_optional_arg_from_sources(
+    matches: &ArgMatches,
+    default_matches: Option<&ArgMatches>,
+    name: &str,
+) -> Result<Option<String>> {
+    if let Some(selected) = selected_optional_arg_matches(matches, default_matches, name) {
+        extract_optional_arg(selected, name)
+    } else {
+        Ok(None)
     }
 }
 
@@ -476,14 +970,115 @@ fn parse_colour(value: Option<&String>) -> Result<Option<bool>> {
         None => Ok(None),
         Some(v) if v.is_empty() => Ok(None),
         Some(v) => match v.to_ascii_lowercase().as_str() {
-            "true" | "yes" => Ok(Some(true)),
-            "false" | "no" => Ok(Some(false)),
+            "true" | "yes" | "always" => Ok(Some(true)),
+            "false" | "no" | "never" => Ok(Some(false)),
+            "auto" => Ok(None),
             other => {
                 print_usage();
                 Err(anyhow!("invalid value for --colour: {other}"))
             }
         },
     }
+}
+
+fn parse_paging(value: Option<&String>) -> Result<PagingMode> {
+    match value.map(|raw| raw.trim().to_ascii_lowercase()) {
+        None => Ok(PagingMode::Auto),
+        Some(v) if v.is_empty() => {
+            print_usage();
+            Err(anyhow!("invalid value for --paging"))
+        }
+        Some(v) => match v.as_str() {
+            "auto" => Ok(PagingMode::Auto),
+            "never" => Ok(PagingMode::Never),
+            "always" => Ok(PagingMode::Always),
+            other => {
+                print_usage();
+                Err(anyhow!("invalid value for --paging: {other}"))
+            }
+        },
+    }
+}
+
+fn resolve_output_style(
+    matches: &ArgMatches,
+    default_matches: Option<&ArgMatches>,
+    stdout_is_terminal: bool,
+) -> Result<OutputStyle> {
+    let mut style = OutputStyle::default_for_terminal(stdout_is_terminal);
+    if let Some(defaults) = default_matches {
+        style = apply_output_style_overrides(
+            style,
+            selected_value(defaults, None, "style"),
+            defaults.get_flag("plain"),
+            defaults.get_flag("number"),
+        )?;
+    }
+    apply_output_style_overrides(
+        style,
+        selected_value(matches, None, "style"),
+        matches.get_flag("plain"),
+        matches.get_flag("number"),
+    )
+}
+
+#[cfg(test)]
+fn parse_output_style(
+    value: Option<&String>,
+    plain: bool,
+    number: bool,
+    stdout_is_terminal: bool,
+) -> Result<OutputStyle> {
+    apply_output_style_overrides(
+        OutputStyle::default_for_terminal(stdout_is_terminal),
+        value,
+        plain,
+        number,
+    )
+}
+
+fn apply_output_style_overrides(
+    mut style: OutputStyle,
+    value: Option<&String>,
+    plain: bool,
+    number: bool,
+) -> Result<OutputStyle> {
+    if let Some(raw) = value {
+        if raw.trim().is_empty() {
+            print_usage();
+            return Err(anyhow!("invalid value for --style"));
+        }
+        style = parse_output_style_value(raw)?;
+    }
+    if number {
+        style.show_numbers = true;
+    }
+    if plain {
+        style = OutputStyle::plain();
+    }
+    Ok(style)
+}
+
+fn parse_output_style_value(raw: &str) -> Result<OutputStyle> {
+    let mut style = OutputStyle::plain();
+    for token in raw
+        .split(',')
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+    {
+        match token {
+            "plain" => style = OutputStyle::plain(),
+            "numbers" => style.show_numbers = true,
+            "header" => style.show_header = true,
+            "grid" => style.show_grid = true,
+            "full" => style = OutputStyle::full(),
+            other => {
+                print_usage();
+                return Err(anyhow!("invalid --style component: {other}"));
+            }
+        }
+    }
+    Ok(style)
 }
 
 /// Load all custom dictionary files specified via `--xml`, registering them and
@@ -972,7 +1567,10 @@ mod tests {
             secret: false,
             validate: false,
             colour: None,
-            show_version: false,
+            style: OutputStyle::plain(),
+            paging: PagingMode::Auto,
+            pager: None,
+            nowrap: false,
             summary: false,
             follow: false,
             files: Vec::new(),
@@ -1029,6 +1627,15 @@ mod tests {
     fn parse_colour_recognises_yes_no() {
         assert_eq!(parse_colour(Some(&"yes".to_string())).unwrap(), Some(true));
         assert_eq!(parse_colour(Some(&"No".to_string())).unwrap(), Some(false));
+        assert_eq!(parse_colour(Some(&"auto".to_string())).unwrap(), None);
+        assert_eq!(
+            parse_colour(Some(&"always".to_string())).unwrap(),
+            Some(true)
+        );
+        assert_eq!(
+            parse_colour(Some(&"never".to_string())).unwrap(),
+            Some(false)
+        );
         assert!(parse_colour(None).unwrap().is_none());
     }
 
@@ -1048,6 +1655,187 @@ mod tests {
     fn parse_delimiter_rejects_empty() {
         let err = parse_delimiter(Some(&"".to_string())).unwrap_err();
         assert!(err.to_string().contains("empty"));
+    }
+
+    #[test]
+    fn parse_paging_defaults_and_accepts_expected_values() {
+        assert_eq!(parse_paging(None).unwrap(), PagingMode::Auto);
+        assert_eq!(
+            parse_paging(Some(&"always".to_string())).unwrap(),
+            PagingMode::Always
+        );
+        assert_eq!(
+            parse_paging(Some(&"never".to_string())).unwrap(),
+            PagingMode::Never
+        );
+    }
+
+    #[test]
+    fn parse_output_style_supports_full_and_overrides() {
+        assert_eq!(
+            parse_output_style(Some(&"full".to_string()), false, false, false).unwrap(),
+            OutputStyle::full()
+        );
+        assert_eq!(
+            parse_output_style(Some(&"header,grid".to_string()), false, true, false).unwrap(),
+            OutputStyle {
+                show_numbers: true,
+                show_header: true,
+                show_grid: true,
+            }
+        );
+        assert_eq!(
+            parse_output_style(None, true, false, true).unwrap(),
+            OutputStyle::plain()
+        );
+        assert_eq!(
+            parse_output_style(None, true, true, true).unwrap(),
+            OutputStyle::plain()
+        );
+    }
+
+    #[test]
+    fn default_less_command_adds_no_wrap_flag() {
+        assert_eq!(default_less_command(true, false), "less -FRX");
+        assert_eq!(default_less_command(true, true), "less -FRX -S --shift=10");
+        assert_eq!(default_less_command(false, true), "less -RX -S --shift=10");
+    }
+
+    #[test]
+    fn merged_less_options_appends_once() {
+        assert_eq!(
+            merged_less_options(None, &["-S", "--shift=10"]),
+            "-S --shift=10"
+        );
+        assert_eq!(
+            merged_less_options(Some("-R"), &["-S", "--shift=10"]),
+            "-R -S --shift=10"
+        );
+        assert_eq!(
+            merged_less_options(Some("-R -S"), &["-S", "--shift=10"]),
+            "-R -S --shift=10"
+        );
+    }
+
+    #[test]
+    fn effective_less_options_strip_horizontal_scroll_when_nowrap_is_disabled() {
+        assert_eq!(effective_less_options(None, false), None);
+        assert_eq!(
+            effective_less_options(Some("-R -S --shift=10"), false),
+            Some("-R".to_string())
+        );
+        assert_eq!(
+            effective_less_options(Some("-RSX -#5"), false),
+            Some("-RX".to_string())
+        );
+    }
+
+    #[test]
+    fn effective_less_options_add_horizontal_scroll_only_for_nowrap() {
+        assert_eq!(
+            effective_less_options(Some("-R -S --shift=3"), true),
+            Some("-R -S --shift=10".to_string())
+        );
+        assert_eq!(
+            effective_less_options(Some("-R"), true),
+            Some("-R -S --shift=10".to_string())
+        );
+    }
+
+    #[test]
+    fn normalise_less_command_strips_horizontal_flags_when_wrapping() {
+        assert_eq!(
+            normalise_less_command("less -RS --shift=5 -M", false).unwrap(),
+            "less -R -M"
+        );
+        assert_eq!(
+            normalise_less_command("/usr/bin/less -S -RX", false).unwrap(),
+            "/usr/bin/less -RX"
+        );
+    }
+
+    #[test]
+    fn normalise_less_command_reapplies_nowrap_flags() {
+        let command = normalise_less_command("less -R --shift=3", true).unwrap();
+        assert_eq!(
+            shlex::split(&command).unwrap(),
+            vec!["less", "-R", "-S", "--shift=10"]
+        );
+    }
+
+    #[test]
+    fn normalise_less_command_preserves_shell_pipeline_commands() {
+        let command = "less -R | tee /tmp/fixdecoder.log";
+        assert_eq!(normalise_less_command(command, false).unwrap(), command);
+    }
+
+    #[test]
+    fn pager_writer_reports_non_zero_exit_status() {
+        let mut writer = PagerWriter::new("exit 7", false).unwrap();
+        let err = writer.finish().unwrap_err();
+        assert!(err.to_string().contains("pager command failed"));
+        assert!(err.to_string().contains("exit status 7"));
+    }
+
+    #[test]
+    fn uses_less_pager_detects_less_by_basename() {
+        assert!(uses_less_pager("less -R"));
+        assert!(uses_less_pager("/usr/bin/less -R"));
+        assert!(!uses_less_pager("bat --paging=always"));
+    }
+
+    #[test]
+    fn parse_default_arg_matches_rejects_invalid_shell_quoting() {
+        let err = parse_default_arg_matches(Some("--pager=\"less -RX")).unwrap_err();
+        assert!(err.to_string().contains(DEFAULT_ARGS_ENV));
+        assert!(err.to_string().contains("shell-style quoting"));
+    }
+
+    #[test]
+    fn parse_default_arg_matches_rejects_input_files() {
+        let err = parse_default_arg_matches(Some("--number orders.log")).unwrap_err();
+        assert!(err.to_string().contains(DEFAULT_ARGS_ENV));
+        assert!(err.to_string().contains("input files"));
+    }
+
+    #[test]
+    fn parse_default_arg_matches_rejects_version_flag() {
+        let err = parse_default_arg_matches(Some("--version")).unwrap_err();
+        assert!(err.to_string().contains(DEFAULT_ARGS_ENV));
+        assert!(err.to_string().contains("--help or --version"));
+    }
+
+    #[test]
+    fn build_cli_rejects_duplicate_single_value_args() {
+        let err = build_cli()
+            .try_get_matches_from(["fixdecoder", "--fix=44", "--fix=50"])
+            .unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn build_context_disables_live_status_when_paging_is_active() {
+        let mut opts = dummy_opts("44");
+        opts.paging = PagingMode::Always;
+
+        let obfuscator = fix::create_obfuscator(false);
+        let mut summary = None;
+        let mut out = Vec::new();
+        let mut err = std::io::sink();
+        let ctx = build_context(
+            &obfuscator,
+            &mut summary,
+            None,
+            &opts,
+            true,
+            &mut out,
+            &mut err,
+        );
+
+        assert!(
+            !ctx.live_status_enabled,
+            "live status should be disabled while output is flowing through a pager"
+        );
     }
 
     #[test]
@@ -1106,6 +1894,34 @@ mod tests {
             .expect("parse follow/summary");
         assert!(matches.get_flag("summary"));
         assert!(matches.get_flag("follow"));
+    }
+
+    #[test]
+    fn build_cli_parses_bat_style_flags() {
+        let matches = build_cli()
+            .try_get_matches_from([
+                "fixdecoder",
+                "--style=header,grid",
+                "--paging=always",
+                "--pager=less -RX",
+                "--nowrap",
+                "-n",
+            ])
+            .expect("parse bat-style flags");
+        assert_eq!(
+            matches.get_one::<String>("style").map(String::as_str),
+            Some("header,grid")
+        );
+        assert_eq!(
+            matches.get_one::<String>("paging").map(String::as_str),
+            Some("always")
+        );
+        assert_eq!(
+            matches.get_one::<String>("pager").map(String::as_str),
+            Some("less -RX")
+        );
+        assert!(matches.get_flag("nowrap"));
+        assert!(matches.get_flag("number"));
     }
 
     #[test]

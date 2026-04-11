@@ -336,6 +336,7 @@ dependencies = [
  "roxmltree",
  "rustc_version",
  "serde",
+ "shlex",
  "tempfile",
  "terminal_size",
 ]

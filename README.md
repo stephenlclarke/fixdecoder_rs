@@ -3,18 +3,18 @@
 
 ---
 
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder2&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder2)
-[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder2&metric=bugs)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder2)
-[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder2&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder2)
-[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder2&metric=coverage)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder2)
-[![Duplicated Lines (%)](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder2&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder2)
-[![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder2&metric=ncloc)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder2)
-[![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder2&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder2)
-[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder2&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder2)
-[![Technical Debt](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder2&metric=sqale_index)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder2)
-[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder2&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder2)
-[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder2&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder2)
-![Repo Visitors](https://visitor-badge.laobi.icu/badge?page_id=stephenlclarke.fixdecoder2)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder_rs&metric=alert_status&token=41cb7c61cc69a3bf1b59cb5a04ca7fb415591a64)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder_rs)
+[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder_rs&metric=bugs&token=41cb7c61cc69a3bf1b59cb5a04ca7fb415591a64)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder_rs)
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder_rs&metric=code_smells&token=41cb7c61cc69a3bf1b59cb5a04ca7fb415591a64)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder_rs)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder_rs&metric=coverage&token=41cb7c61cc69a3bf1b59cb5a04ca7fb415591a64)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder_rs)
+[![Duplicated Lines (%)](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder_rs&metric=duplicated_lines_density&token=41cb7c61cc69a3bf1b59cb5a04ca7fb415591a64)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder_rs)
+[![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder_rs&metric=ncloc&token=41cb7c61cc69a3bf1b59cb5a04ca7fb415591a64)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder_rs)
+[![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder_rs&metric=reliability_rating&token=41cb7c61cc69a3bf1b59cb5a04ca7fb415591a64)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder_rs)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder_rs&metric=security_rating&token=41cb7c61cc69a3bf1b59cb5a04ca7fb415591a64)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder_rs)
+[![Technical Debt](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder_rs&metric=sqale_index&token=41cb7c61cc69a3bf1b59cb5a04ca7fb415591a64)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder_rs)
+[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder_rs&metric=sqale_rating&token=41cb7c61cc69a3bf1b59cb5a04ca7fb415591a64)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder_rs)
+[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder_rs&metric=vulnerabilities&token=41cb7c61cc69a3bf1b59cb5a04ca7fb415591a64)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder_rs)
+![Repo Visitors](https://visitor-badge.laobi.icu/badge?page_id=stephenlclarke.fixdecoder_rs)
 
 ---
 
@@ -64,10 +64,13 @@ cat fixlog.txt | fixdecoder --validate --summary
 
 You can run fixdecoder anywhere you can run a Rust binary — no extra OS dependencies or runtime services are required. It ships with a full set of embedded FIX dictionaries. The sections below cover the key options for selecting and browsing dictionaries, controlling output/formatting, and adjusting processing modes.
 
+The decoder now also exposes bat-style presentation controls for terminal use. You can add line numbers with `--number`, switch decorations with `--style=plain|numbers|header|grid|full`, disable decoration with `--plain`, and control paging with `--paging=auto|never|always`, `--pager=<CMD>`, and `--nowrap`.
+
 ## Key options at a glance
 
 - Dictionaries: `--xml`, `--fix`, `--info`, `--message`, `--component`, `--tag`
 - Output/layout: `--column`, `--verbose`, `--header`, `--trailer`, `--colour`, `--delimiter`
+- Bat-style viewing: `--style`, `--plain`, `--number`, `--paging`, `--pager`, `--nowrap`
 - Processing modes: `--follow`, `--validate`, `--secret`, `--summary`
 
 ### `--xml`
@@ -110,9 +113,38 @@ Validate each decoded FIX message against the active dictionary (honours `--fix`
 
 Obfuscate sensitive FIX fields while decoding. When enabled, values for a predefined set of sensitive tags (e.g., session IDs, sender/target IDs) are replaced with stable aliases (e.g., `SenderCompID0001`) so logs stay readable without exposing real identifiers. Obfuscation is applied per line/message and resets between files; disabled by default.
 
-### `--colour[=yes|no]`
+### `--colour[=yes|no|auto]`
 
-Control coloured output. By default, colours are shown when writing to a terminal and disabled when output is piped. Use `--colour`/`--colour=yes` to force colours on, or `--colour=no` to force them off. Non-tty output defaults to no colour unless you explicitly opt in.
+Control coloured output. By default, colours are shown when writing to a terminal and disabled when output is piped. Use `--colour`/`--colour=yes` (or `--color=always`) to force colours on, `--colour=no` (or `--color=never`) to force them off, and `--colour=auto` to return to the default terminal-sensitive behaviour.
+
+### Bat-style viewing controls
+
+fixdecoder keeps its FIX-aware decode output, but now borrows bat’s terminal ergonomics:
+
+- `--style=plain|numbers|header|grid|full` toggles bat-style decorations around the decoded stream. `full` enables file headers, line numbers, and separators together.
+- `--plain` disables file headers, line numbers, and separators.
+- `--number` adds input line numbers to the rendered source lines.
+- `--paging=auto|never|always` controls whether output is sent through a pager. `auto` uses a pager only for interactive terminals, `never` disables it, and `always` forces it for interactive terminals.
+- `--pager=<CMD>` overrides the pager command. If unset, fixdecoder honours `PAGER` and otherwise falls back to `less`.
+- `--nowrap` enables chopped lines and horizontal scrolling in pager mode. With the default `less` pager, left and right arrow movement shifts 10 columns at a time so wide FIX lines remain practical to inspect. Without `--nowrap`, fixdecoder keeps wrapped pager output even if inherited `less` settings request chopped lines. It has no effect when output is not being paged.
+- `FIXDECODER_DEFAULT_ARGS` can hold shell-style default options such as `--style=full --paging=always --nowrap`. These defaults are applied before the real command line, so later single-value CLI options such as `--fix`, `--paging`, or `--pager` override the environment value. Keep input files on the real command line.
+
+Examples:
+
+```bash
+# Bat-style headers + grids with line numbers
+fixdecoder --style=header,grid --number orders.log
+
+# Disable paging for follow-mode style monitoring
+tail -f orders.log | fixdecoder --paging=never --number
+
+# Use horizontal scrolling instead of wrapped lines in the pager
+fixdecoder --paging=always --nowrap orders.log
+
+# Apply your preferred viewing defaults to every run
+export FIXDECODER_DEFAULT_ARGS='--style=full --paging=always --nowrap'
+fixdecoder orders.log
+```
 
 ### `--delimiter=<CHAR>`
 

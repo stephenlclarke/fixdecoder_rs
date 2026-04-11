@@ -24,11 +24,50 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 /// Shared context for prettification to keep function signatures concise.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OutputStyle {
+    pub show_numbers: bool,
+    pub show_header: bool,
+    pub show_grid: bool,
+}
+
+impl OutputStyle {
+    pub const fn plain() -> Self {
+        Self {
+            show_numbers: false,
+            show_header: false,
+            show_grid: false,
+        }
+    }
+
+    pub const fn full() -> Self {
+        Self {
+            show_numbers: true,
+            show_header: true,
+            show_grid: true,
+        }
+    }
+
+    pub fn default_for_terminal(is_terminal: bool) -> Self {
+        if is_terminal {
+            Self {
+                show_numbers: false,
+                show_header: true,
+                show_grid: true,
+            }
+        } else {
+            Self::plain()
+        }
+    }
+}
+
 pub struct PrettifyContext<'a> {
     pub out: &'a mut dyn Write,
     pub err_out: &'a mut dyn Write,
     pub obfuscator: &'a fix::Obfuscator,
     pub display_delimiter: char,
+    pub style: OutputStyle,
+    pub wide_grid: bool,
     pub summary: &'a mut Option<OrderSummary>,
     pub fix_override: Option<&'a str>,
     pub follow: bool,
@@ -617,13 +656,6 @@ fn handle_file(path: &str, ctx: &mut PrettifyContext) -> io::Result<()> {
 /// Stream lines from a reader, emitting formatted FIX messages (and optionally validation output).
 fn stream_reader<R: BufRead>(reader: &mut R, ctx: &mut PrettifyContext) -> io::Result<bool> {
     let mut line = String::new();
-    let colours = palette();
-    let separator = format!(
-        "{}{}{}\n",
-        colours.title,
-        "=".repeat(terminal_width()),
-        colours.reset
-    );
 
     let mut line_number = 0usize;
     let mut read_any = false;
@@ -639,7 +671,7 @@ fn stream_reader<R: BufRead>(reader: &mut R, ctx: &mut PrettifyContext) -> io::R
         trim_line_endings(&mut line);
 
         let processed = ctx.obfuscator.enabled_line(&line);
-        handle_log_line(&processed, line_number, &separator, ctx)?;
+        handle_log_line(&processed, line_number, ctx)?;
     }
 
     Ok(read_any)
@@ -661,14 +693,17 @@ fn stream_until_complete<R: BufRead>(reader: &mut R, ctx: &mut PrettifyContext) 
 }
 
 fn announce_source(label: &str, ctx: &mut PrettifyContext) {
-    if !ctx.validation_enabled && ctx.live_status_enabled {
-        let colours = palette();
-        let _ = writeln!(
-            ctx.out,
-            "Processing: {}{}{}\n",
-            colours.file, label, colours.reset
-        );
+    if !ctx.style.show_header {
+        return;
     }
+    let colours = palette();
+    let prefix = format!("-- {label} ");
+    let fill = "-".repeat(terminal_width().saturating_sub(prefix.len()).max(4));
+    let _ = writeln!(
+        ctx.out,
+        "{}{}{}{}\n",
+        colours.file, prefix, fill, colours.reset
+    );
 }
 
 fn trim_line_endings(line: &mut String) {
@@ -701,14 +736,9 @@ fn read_line_with_follow<R: BufRead>(
 }
 
 /// Process a single log line, extracting FIX messages and rendering prettified output.
-fn handle_log_line(
-    line: &str,
-    line_number: usize,
-    separator: &str,
-    ctx: &mut PrettifyContext,
-) -> io::Result<()> {
+fn handle_log_line(line: &str, line_number: usize, ctx: &mut PrettifyContext) -> io::Result<()> {
     if !ctx.validation_enabled {
-        return process_without_validation(line, separator, ctx);
+        return process_without_validation(line, line_number, ctx);
     }
 
     process_with_validation(line, line_number, ctx)
@@ -716,7 +746,7 @@ fn handle_log_line(
 
 fn process_without_validation(
     line: &str,
-    separator: &str,
+    line_number: usize,
     ctx: &mut PrettifyContext,
 ) -> io::Result<()> {
     let matches = find_fix_message_indices(line);
@@ -724,7 +754,8 @@ fn process_without_validation(
 
     if matches.is_empty() {
         if ctx.summary.is_none() {
-            writeln!(ctx.out, "{}{}{}", colours.line, line, colours.reset)?;
+            let rendered = format!("{}{}{}", colours.line, line, colours.reset);
+            write_source_line(ctx, line_number, &rendered)?;
         }
         return Ok(());
     }
@@ -733,12 +764,21 @@ fn process_without_validation(
         extract_messages_and_format(line, &matches, ctx.display_delimiter);
 
     if ctx.summary.is_none() {
-        write!(ctx.out, "{coloured_line}")?;
-        write!(ctx.out, "{separator}")?;
+        let separator_width = messages
+            .iter()
+            .fold(max_visible_line_width(&coloured_line), |acc, msg| {
+                acc.max(separator_width_for_message(msg, ctx.fix_override, false))
+            });
+        write_source_line(ctx, line_number, &coloured_line)?;
+        write!(
+            ctx.out,
+            "{}",
+            render_separator(ctx.style, separator_width, ctx.wide_grid)
+        )?;
     }
 
     record_messages(&messages, ctx);
-    emit_messages(&messages, ctx, separator)?;
+    emit_messages(&messages, ctx)?;
 
     render_summary_footer(ctx)
 }
@@ -773,11 +813,16 @@ fn process_with_validation(
             continue;
         }
         if !header_emitted {
-            writeln!(
-                ctx.out,
-                "Line {}: {}{}{}",
-                line_number, colours.line, display_line, colours.reset
-            )?;
+            if ctx.style.show_numbers {
+                let rendered = format!("{}{}{}", colours.line, display_line, colours.reset);
+                write_source_line(ctx, line_number, &rendered)?;
+            } else {
+                writeln!(
+                    ctx.out,
+                    "Line {}: {}{}{}",
+                    line_number, colours.line, display_line, colours.reset
+                )?;
+            }
             header_emitted = true;
         }
         stream_invalid_message(ctx, msg, &dict, &report)?;
@@ -831,11 +876,7 @@ fn extract_msg_type(msg: &str) -> Option<String> {
     None
 }
 
-fn emit_messages(
-    messages: &[String],
-    ctx: &mut PrettifyContext,
-    separator: &str,
-) -> io::Result<()> {
+fn emit_messages(messages: &[String], ctx: &mut PrettifyContext) -> io::Result<()> {
     if ctx.summary.is_some() {
         return Ok(());
     }
@@ -844,9 +885,10 @@ fn emit_messages(
         process_fix_message(
             msg,
             ctx.out,
-            separator,
             ctx.fix_override,
             ctx.validation_enabled,
+            ctx.style,
+            ctx.wide_grid,
         )?;
     }
     Ok(())
@@ -909,9 +951,41 @@ fn extract_messages_and_format(
     }
 
     output.push_str(colours.reset);
-    output.push('\n');
 
     (fix_messages, output)
+}
+
+fn render_separator(style: OutputStyle, content_width: usize, wide_grid: bool) -> String {
+    if !style.show_grid {
+        return "\n".to_string();
+    }
+    let colours = palette();
+    let width = if wide_grid {
+        content_width.max(terminal_width()).max(1)
+    } else {
+        terminal_width()
+    };
+    format!("{}{}{}\n", colours.title, "=".repeat(width), colours.reset)
+}
+
+fn max_visible_line_width(text: &str) -> usize {
+    text.lines().map(visible_width).max().unwrap_or_default()
+}
+
+fn write_source_line(
+    ctx: &mut PrettifyContext,
+    line_number: usize,
+    content: &str,
+) -> io::Result<()> {
+    if ctx.style.show_numbers {
+        let colours = palette();
+        write!(
+            ctx.out,
+            "{}{:>6}{} | ",
+            colours.file, line_number, colours.reset
+        )?;
+    }
+    writeln!(ctx.out, "{content}")
 }
 
 /// Replace SOH display delimiters for human-readable rendering without mutating inputs.
@@ -936,27 +1010,51 @@ fn apply_display_delimiter<'a>(text: &'a str, delimiter: char) -> Cow<'a, str> {
 fn process_fix_message(
     msg: &str,
     out: &mut dyn Write,
-    separator: &str,
     fix_override: Option<&str>,
     validation_enabled: bool,
+    style: OutputStyle,
+    wide_grid: bool,
 ) -> io::Result<()> {
     let dict = load_dictionary_with_override(msg, fix_override);
     let pretty = prettify_with_report(msg, &dict, None);
+    let report = validation_enabled.then(|| validator::validate_fix_message(msg, &dict));
+    let separator_width = separator_width_for_pretty(&pretty, report.as_ref());
+    let separator = render_separator(style, separator_width, wide_grid);
     write!(out, "{pretty}")?;
 
-    if validation_enabled {
-        let report = validator::validate_fix_message(msg, &dict);
-        if !report.errors.is_empty() {
-            let colours = palette();
-            write!(out, "{separator}")?;
-            for err in report.errors {
-                writeln!(out, "{}== {}{}", colours.error, err, colours.reset)?;
-            }
+    if let Some(report) = report
+        && !report.errors.is_empty()
+    {
+        let colours = palette();
+        write!(out, "{separator}")?;
+        for err in report.errors {
+            writeln!(out, "{}== {}{}", colours.error, err, colours.reset)?;
         }
     }
 
     write!(out, "{separator}")?;
     Ok(())
+}
+
+fn separator_width_for_message(
+    msg: &str,
+    fix_override: Option<&str>,
+    validation_enabled: bool,
+) -> usize {
+    let dict = load_dictionary_with_override(msg, fix_override);
+    let pretty = prettify_with_report(msg, &dict, None);
+    let report = validation_enabled.then(|| validator::validate_fix_message(msg, &dict));
+    separator_width_for_pretty(&pretty, report.as_ref())
+}
+
+fn separator_width_for_pretty(pretty: &str, report: Option<&validator::ValidationReport>) -> usize {
+    let mut separator_width = max_visible_line_width(pretty);
+    if let Some(report) = report {
+        for err in &report.errors {
+            separator_width = separator_width.max(err.len() + 3);
+        }
+    }
+    separator_width
 }
 
 pub fn disable_output_colours() {
@@ -1083,6 +1181,8 @@ mod tests {
             err_out: &mut err,
             obfuscator: &obfuscator,
             display_delimiter: '|',
+            style: OutputStyle::plain(),
+            wide_grid: false,
             summary: &mut summary,
             fix_override: None,
             follow: false,
@@ -1147,6 +1247,8 @@ mod tests {
             err_out: &mut err,
             obfuscator: &obfuscator,
             display_delimiter: '|',
+            style: OutputStyle::plain(),
+            wide_grid: false,
             summary: &mut summary,
             fix_override: None,
             follow: false,
@@ -1181,6 +1283,8 @@ mod tests {
             err_out: &mut err,
             obfuscator: &obfuscator,
             display_delimiter: '|',
+            style: OutputStyle::plain(),
+            wide_grid: false,
             summary: &mut summary,
             fix_override: None,
             follow: false,
@@ -1285,6 +1389,74 @@ mod tests {
         let mut line = "abc\r\n".to_string();
         trim_line_endings(&mut line);
         assert_eq!(line, "abc");
+    }
+
+    #[test]
+    fn max_visible_line_width_tracks_longest_rendered_line() {
+        let text = "short\n\u{1b}[31mthis is longer\u{1b}[0m\nmid";
+        assert_eq!(max_visible_line_width(text), "this is longer".len());
+    }
+
+    #[test]
+    fn render_separator_expands_when_wide_grid_is_enabled() {
+        disable_output_colours();
+        let wide = terminal_width() + 25;
+        let rendered = render_separator(OutputStyle::full(), wide, true);
+        let line = rendered.trim_end_matches('\n');
+        assert_eq!(visible_width(line), wide);
+
+        let regular = render_separator(OutputStyle::full(), wide, false);
+        let regular_line = regular.trim_end_matches('\n');
+        assert_eq!(visible_width(regular_line), terminal_width());
+    }
+
+    #[test]
+    fn source_separator_matches_decoded_bottom_separator_in_wide_grid_mode() {
+        let _lock = TEST_GUARD.lock().unwrap();
+        disable_output_colours();
+        let obfuscator = fix::create_obfuscator(false);
+        let line = format!("8=FIX.4.4{SOH}9=005{SOH}35=0{SOH}10=000{SOH}\n");
+        let mut out = Vec::new();
+        let mut err = io::sink();
+        let mut summary = None;
+        let mut ctx = PrettifyContext {
+            out: &mut out,
+            err_out: &mut err,
+            obfuscator: &obfuscator,
+            display_delimiter: '|',
+            style: OutputStyle {
+                show_numbers: false,
+                show_header: false,
+                show_grid: true,
+            },
+            wide_grid: true,
+            summary: &mut summary,
+            fix_override: None,
+            follow: false,
+            live_status_enabled: true,
+            validation_enabled: false,
+            message_counts: HashMap::new(),
+            counts_dirty: false,
+            interrupted: interrupt_flag(),
+        };
+        let mut reader = BufReader::new(Cursor::new(line));
+        stream_reader(&mut reader, &mut ctx).unwrap();
+
+        let output = String::from_utf8(out).unwrap();
+        let separators: Vec<&str> = output
+            .lines()
+            .filter(|line| line.starts_with('='))
+            .collect();
+        assert_eq!(
+            separators.len(),
+            2,
+            "expected source-to-decoded separator and decoded bottom separator: {output}"
+        );
+        assert_eq!(
+            visible_width(separators[0]),
+            visible_width(separators[1]),
+            "source separator should match decoded block width: {output}"
+        );
     }
 
     #[test]

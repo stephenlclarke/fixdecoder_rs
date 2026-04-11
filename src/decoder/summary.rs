@@ -656,15 +656,12 @@ impl OrderRecord {
 
     fn copy_trade_and_settlement(&mut self, fields: &HashMap<u32, String>, dict: &FixTagLookup) {
         if let Some(trd60) = fields.get(&60) {
+            // When TradeDate (75) is absent, derive a business-date value from
+            // TransactTime (60) so tenor calculations still work.
             let date = extract_date_part(trd60).unwrap_or_else(|| trd60.clone());
             Self::set_value(&mut self.trade_date, Some(&date));
             self.trade_date_name
                 .get_or_insert_with(|| dict.field_name(75));
-        }
-        if let Some(trd) = fields.get(&60) {
-            Self::set_value(&mut self.trade_date, Some(trd));
-            self.trade_date_name
-                .get_or_insert_with(|| dict.field_name(60));
         }
         if let Some(trd75) = fields.get(&75) {
             self.trade_date = Some(trd75.clone());
@@ -1257,6 +1254,32 @@ mod tests {
         let record = summary.orders.values().next().unwrap();
         assert_eq!(record.display_id(), "OID1");
         assert_eq!(record.qty.as_deref(), Some("75"));
+        assert_eq!(
+            date_diff_days(
+                record.trade_date.as_deref(),
+                preferred_settl_date(record.settl_date.as_deref(), record.settl_date2.as_deref())
+            ),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn transact_time_falls_back_to_trade_date_for_tenor_math() {
+        let mut summary = OrderSummary::new('\u{0001}');
+        summary.record_message(
+            &msg(&[
+                ("35", "D"),
+                ("11", "ABC"),
+                ("55", "EUR/USD"),
+                ("54", "1"),
+                ("60", "20250102-12:34:56.000"),
+                ("193", "20250106"),
+            ]),
+            None,
+        );
+
+        let record = summary.orders.get("ABC").expect("order captured");
+        assert_eq!(record.trade_date.as_deref(), Some("20250102"));
         assert_eq!(
             date_diff_days(
                 record.trade_date.as_deref(),

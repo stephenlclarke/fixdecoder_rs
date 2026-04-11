@@ -9,10 +9,10 @@ use pcap_parser::data::{get_packetdata, PacketData, ETHERTYPE_IPV4, ETHERTYPE_IP
 use pcap_parser::pcapng::Block;
 use pcap_parser::traits::{PcapNGPacketBlock, PcapReaderIterator};
 use pcap_parser::{create_reader, Linktype, PcapBlockOwned};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
 use std::io::{self, Write};
-use std::net::Ipv4Addr;
+use std::net::IpAddr;
 use std::time::{Duration, Instant};
 use thiserror::Error;
 
@@ -38,8 +38,8 @@ struct Args {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct FlowKey {
-    src: Ipv4Addr,
-    dst: Ipv4Addr,
+    src: IpAddr,
+    dst: IpAddr,
     sport: u16,
     dport: u16,
     // direction handled by seq tracking in FlowState
@@ -49,6 +49,7 @@ struct FlowKey {
 struct FlowState {
     next_seq: Option<u32>,
     buffer: Vec<u8>,
+    pending: BTreeMap<u32, Vec<u8>>,
     last_seen: Instant,
 }
 
@@ -57,6 +58,7 @@ impl Default for FlowState {
         FlowState {
             next_seq: None,
             buffer: Vec::new(),
+            pending: BTreeMap::new(),
             last_seen: Instant::now(),
         }
     }
@@ -239,8 +241,17 @@ fn handle_sliced_packet<W: Write>(
     flows: &mut HashMap<FlowKey, FlowState>,
     out: &mut W,
 ) -> Result<()> {
-    let (ip, tcp) = match (sliced.net, sliced.transport) {
-        (Some(NetSlice::Ipv4(ip)), Some(TransportSlice::Tcp(tcp))) => (ip, tcp),
+    let (src, dst, tcp) = match (sliced.net, sliced.transport) {
+        (Some(NetSlice::Ipv4(ip)), Some(TransportSlice::Tcp(tcp))) => (
+            IpAddr::V4(ip.header().source_addr()),
+            IpAddr::V4(ip.header().destination_addr()),
+            tcp,
+        ),
+        (Some(NetSlice::Ipv6(ip)), Some(TransportSlice::Tcp(tcp))) => (
+            IpAddr::V6(ip.header().source_addr()),
+            IpAddr::V6(ip.header().destination_addr()),
+            tcp,
+        ),
         _ => return Ok(()),
     };
     if let Some(p) = port_filter {
@@ -254,10 +265,9 @@ fn handle_sliced_packet<W: Write>(
         return Ok(());
     }
 
-    let header = ip.header();
     let key = FlowKey {
-        src: header.source_addr(),
-        dst: header.destination_addr(),
+        src,
+        dst,
         sport: tcp.source_port(),
         dport: tcp.destination_port(),
     };
@@ -280,31 +290,78 @@ fn reassemble_and_emit<W: Write>(
     let expected = flow.next_seq.unwrap_or(seq);
 
     if seq == expected {
-        flow.buffer.extend_from_slice(payload);
-        flow.next_seq = Some(seq.wrapping_add(payload.len() as u32));
+        append_segment(flow, seq, payload);
     } else if seq > expected {
-        // out-of-order future segment: skip for now
-        return Ok(());
+        store_future_segment(flow, seq, payload);
     } else {
-        // retransmit or overlap
-        let end = seq.wrapping_add(payload.len() as u32);
-        if end <= expected {
-            // fully duplicate
-            return Ok(());
-        }
-        let overlap = (expected - seq) as usize;
-        flow.buffer.extend_from_slice(&payload[overlap..]);
-        flow.next_seq = Some(expected.wrapping_add(payload.len() as u32 - overlap as u32));
+        append_segment(flow, seq, payload);
     }
 
-    if flow.buffer.len() > max_flow_bytes {
+    drain_pending_segments(flow);
+
+    if buffered_bytes(flow) > max_flow_bytes {
         flow.buffer.clear();
+        flow.pending.clear();
+        flow.next_seq = None;
         return Err(ReassemblyError::Overflow.into());
     }
 
     let mut scratch = Vec::new();
     flush_complete_messages(&mut flow.buffer, delimiter, &mut scratch, out)?;
     Ok(())
+}
+
+fn append_segment(flow: &mut FlowState, seq: u32, payload: &[u8]) {
+    let expected = flow.next_seq.unwrap_or(seq);
+
+    if seq == expected {
+        flow.buffer.extend_from_slice(payload);
+        flow.next_seq = Some(seq.wrapping_add(payload.len() as u32));
+        return;
+    }
+
+    let end = seq.wrapping_add(payload.len() as u32);
+    if end <= expected {
+        return;
+    }
+
+    let overlap = (expected - seq) as usize;
+    flow.buffer.extend_from_slice(&payload[overlap..]);
+    flow.next_seq = Some(expected.wrapping_add((payload.len() - overlap) as u32));
+}
+
+fn store_future_segment(flow: &mut FlowState, seq: u32, payload: &[u8]) {
+    match flow.pending.entry(seq) {
+        std::collections::btree_map::Entry::Vacant(entry) => {
+            entry.insert(payload.to_vec());
+        }
+        std::collections::btree_map::Entry::Occupied(mut entry) => {
+            if payload.len() > entry.get().len() {
+                entry.insert(payload.to_vec());
+            }
+        }
+    }
+}
+
+fn drain_pending_segments(flow: &mut FlowState) {
+    loop {
+        let Some((&seq, _)) = flow.pending.first_key_value() else {
+            break;
+        };
+        let expected = flow.next_seq.unwrap_or(seq);
+        if seq > expected {
+            break;
+        }
+        let segment = flow
+            .pending
+            .remove(&seq)
+            .expect("segment present in pending map");
+        append_segment(flow, seq, &segment);
+    }
+}
+
+fn buffered_bytes(flow: &FlowState) -> usize {
+    flow.buffer.len() + flow.pending.values().map(std::vec::Vec::len).sum::<usize>()
 }
 
 fn flush_complete_messages<W: Write>(
@@ -386,6 +443,7 @@ fn evict_idle(flows: &mut HashMap<FlowKey, FlowState>, idle: Duration) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use etherparse::PacketBuilder;
 
     fn build_fix_message(body: &str, delim: u8) -> Vec<u8> {
         let mut msg = Vec::new();
@@ -462,13 +520,23 @@ mod tests {
     }
 
     #[test]
-    fn out_of_order_future_segment_is_skipped() {
+    fn out_of_order_future_segment_is_buffered_until_gap_arrives() {
         let mut flow = FlowState::default();
         let mut out = Vec::new();
         reassemble_and_emit(&mut flow, 5, b"first", b'|', 1024, &mut out).unwrap();
-        // future seq skipped
-        reassemble_and_emit(&mut flow, 20, b"second", b'|', 1024, &mut out).unwrap();
+        reassemble_and_emit(&mut flow, 16, b"third", b'|', 1024, &mut out).unwrap();
         assert_eq!(flow.buffer, b"first");
+        assert_eq!(
+            flow.pending.get(&16).map(Vec::as_slice),
+            Some(b"third".as_slice())
+        );
+
+        reassemble_and_emit(&mut flow, 10, b"second", b'|', 1024, &mut out).unwrap();
+        assert_eq!(flow.buffer, b"firstsecondthird");
+        assert!(
+            flow.pending.is_empty(),
+            "future segment should drain once the gap is filled"
+        );
     }
 
     #[test]
@@ -491,5 +559,24 @@ mod tests {
         };
         assert_eq!(out, expected_out);
         assert_eq!(buf, b"partial");
+    }
+
+    #[test]
+    fn ipv6_tcp_payload_is_reassembled() {
+        let src = [0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+        let dst = [0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2];
+        let payload = build_fix_message("35=0\u{0001}", 0x01);
+        let builder = PacketBuilder::ipv6(src, dst, 32).tcp(7001, 9876, 42, 4096);
+        let mut packet = Vec::with_capacity(builder.size(payload.len()));
+        builder.write(&mut packet, &payload).unwrap();
+
+        let sliced = SlicedPacket::from_ip(&packet).unwrap();
+        let mut flows = HashMap::new();
+        let mut out = Vec::new();
+        handle_sliced_packet(sliced, Some(9876), 0x01, 1024, &mut flows, &mut out).unwrap();
+
+        let text = String::from_utf8(out).unwrap();
+        assert!(text.contains("8=FIX.4.4"));
+        assert!(text.ends_with('\n'));
     }
 }
