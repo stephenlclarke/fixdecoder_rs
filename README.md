@@ -3,8 +3,17 @@
 
 ---
 
-[![SonarCloud Project](https://img.shields.io/badge/SonarCloud-project-F3702A?logo=sonarcloud&logoColor=white)](https://sonarcloud.io/project/overview?id=stephenlclarke_fixdecoder_rs)
-[![SonarCloud New Code](https://img.shields.io/badge/SonarCloud-new%20code-F3702A?logo=sonarcloud&logoColor=white)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder_rs)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder_rs&metric=alert_status&token=41cb7c61cc69a3bf1b59cb5a04ca7fb415591a64)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder_rs)
+[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder_rs&metric=bugs&token=41cb7c61cc69a3bf1b59cb5a04ca7fb415591a64)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder_rs)
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder_rs&metric=code_smells&token=41cb7c61cc69a3bf1b59cb5a04ca7fb415591a64)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder_rs)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder_rs&metric=coverage&token=41cb7c61cc69a3bf1b59cb5a04ca7fb415591a64)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder_rs)
+[![Duplicated Lines (%)](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder_rs&metric=duplicated_lines_density&token=41cb7c61cc69a3bf1b59cb5a04ca7fb415591a64)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder_rs)
+[![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder_rs&metric=ncloc&token=41cb7c61cc69a3bf1b59cb5a04ca7fb415591a64)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder_rs)
+[![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder_rs&metric=reliability_rating&token=41cb7c61cc69a3bf1b59cb5a04ca7fb415591a64)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder_rs)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder_rs&metric=security_rating&token=41cb7c61cc69a3bf1b59cb5a04ca7fb415591a64)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder_rs)
+[![Technical Debt](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder_rs&metric=sqale_index&token=41cb7c61cc69a3bf1b59cb5a04ca7fb415591a64)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder_rs)
+[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder_rs&metric=sqale_rating&token=41cb7c61cc69a3bf1b59cb5a04ca7fb415591a64)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder_rs)
+[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder_rs&metric=vulnerabilities&token=41cb7c61cc69a3bf1b59cb5a04ca7fb415591a64)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder_rs)
 ![Repo Visitors](https://visitor-badge.laobi.icu/badge?page_id=stephenlclarke.fixdecoder_rs)
 
 ---
