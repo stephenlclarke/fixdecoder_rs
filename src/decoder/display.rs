@@ -9,7 +9,7 @@
 use crate::decoder::colours::{ColourPalette, palette};
 use crate::decoder::layout::{NEST_INDENT, TAG_WIDTH};
 use crate::decoder::schema::{
-    ComponentNode, Field, FieldNode, GroupNode, MessageNode, SchemaTree, Value,
+    ComponentNode, ContainerNode, Field, FieldNode, GroupNode, MessageNode, SchemaTree, Value,
 };
 use std::cmp;
 use std::collections::HashMap;
@@ -290,18 +290,24 @@ mod tests {
             values_wrapper: ValuesWrapper::default(),
         });
         let group_field = sample_field_node(true);
+        let nested_group = GroupNode {
+            name: "Nested".into(),
+            required: false,
+            fields: vec![group_field.clone()],
+            components: Vec::new(),
+            groups: Vec::new(),
+            entries: vec![ContainerNode::Field(group_field.clone())],
+        };
 
         let component = ComponentNode {
             name: "Block".into(),
             fields: vec![aux_field.clone()],
-            groups: vec![GroupNode {
-                name: "Nested".into(),
-                required: false,
-                fields: vec![group_field.clone()],
-                components: Vec::new(),
-                groups: Vec::new(),
-            }],
+            groups: vec![nested_group.clone()],
             components: Vec::new(),
+            entries: vec![
+                ContainerNode::Field(aux_field.clone()),
+                ContainerNode::Group(nested_group.clone()),
+            ],
         };
 
         let header = ComponentNode {
@@ -312,6 +318,10 @@ mod tests {
             }],
             groups: Vec::new(),
             components: Vec::new(),
+            entries: vec![ContainerNode::Field(FieldNode {
+                required: true,
+                field: msg_type_field.clone(),
+            })],
         };
 
         let trailer = ComponentNode {
@@ -319,6 +329,19 @@ mod tests {
             fields: vec![aux_field.clone()],
             groups: Vec::new(),
             components: Vec::new(),
+            entries: vec![ContainerNode::Field(aux_field.clone())],
+        };
+
+        let allocs_group = GroupNode {
+            name: "Allocs".into(),
+            required: true,
+            fields: vec![group_field.clone()],
+            components: vec![component.clone()],
+            groups: Vec::new(),
+            entries: vec![
+                ContainerNode::Field(group_field.clone()),
+                ContainerNode::Component(component.clone()),
+            ],
         };
 
         let message = MessageNode {
@@ -333,13 +356,16 @@ mod tests {
                 aux_field.clone(),
             ],
             components: vec![component.clone()],
-            groups: vec![GroupNode {
-                name: "Allocs".into(),
-                required: true,
-                fields: vec![group_field],
-                components: vec![component.clone()],
-                groups: Vec::new(),
-            }],
+            groups: vec![allocs_group.clone()],
+            entries: vec![
+                ContainerNode::Field(FieldNode {
+                    required: true,
+                    field: msg_type_field.clone(),
+                }),
+                ContainerNode::Field(aux_field.clone()),
+                ContainerNode::Component(component.clone()),
+                ContainerNode::Group(allocs_group),
+            ],
         };
 
         let mut fields = BTreeMap::new();
@@ -448,6 +474,103 @@ mod tests {
     }
 
     #[test]
+    fn render_message_preserves_interleaved_container_order() {
+        use std::collections::BTreeMap;
+        use std::sync::Arc;
+
+        crate::decoder::colours::disable_colours();
+
+        let before = Arc::new(Field {
+            name: "BeforeField".into(),
+            number: 11,
+            field_type: "STRING".into(),
+            values: Vec::new(),
+            values_wrapper: ValuesWrapper::default(),
+        });
+        let after = Arc::new(Field {
+            name: "AfterField".into(),
+            number: 22,
+            field_type: "STRING".into(),
+            values: Vec::new(),
+            values_wrapper: ValuesWrapper::default(),
+        });
+        let component = ComponentNode {
+            name: "Block".into(),
+            fields: vec![FieldNode {
+                required: false,
+                field: after.clone(),
+            }],
+            groups: Vec::new(),
+            components: Vec::new(),
+            entries: vec![ContainerNode::Field(FieldNode {
+                required: false,
+                field: after.clone(),
+            })],
+        };
+        let message = MessageNode {
+            name: "Ordered".into(),
+            msg_type: "Z".into(),
+            msg_cat: "app".into(),
+            fields: vec![
+                FieldNode {
+                    required: true,
+                    field: before.clone(),
+                },
+                FieldNode {
+                    required: false,
+                    field: after.clone(),
+                },
+            ],
+            components: vec![component.clone()],
+            groups: Vec::new(),
+            entries: vec![
+                ContainerNode::Field(FieldNode {
+                    required: true,
+                    field: before.clone(),
+                }),
+                ContainerNode::Component(component),
+                ContainerNode::Field(FieldNode {
+                    required: false,
+                    field: after.clone(),
+                }),
+            ],
+        };
+        let mut fields = BTreeMap::new();
+        fields.insert(before.name.clone(), before);
+        fields.insert(after.name.clone(), after);
+        let mut components = BTreeMap::new();
+        components.insert("Block".into(), message.components[0].clone());
+        let schema = SchemaTree {
+            fields,
+            components,
+            messages: BTreeMap::from([(message.name.clone(), message.clone())]),
+            version: "FIX 4.4".into(),
+            service_pack: "-".into(),
+        };
+
+        let mut out = Vec::new();
+        let mut ctx = RenderContext::new(
+            &mut out,
+            &schema,
+            DisplayStyle::new(palette(), false),
+            false,
+        );
+        ctx.render_message(&message, false, false, 0).unwrap();
+
+        let rendered = String::from_utf8(out).unwrap();
+        let before_pos = rendered.find("BeforeField").expect("before field present");
+        let component_pos = rendered
+            .find("Component: ")
+            .expect("component label present");
+        let after_pos = rendered.find("AfterField").expect("after field present");
+
+        assert!(
+            before_pos < component_pos && component_pos < after_pos,
+            "rendered order should follow message entries: {rendered}"
+        );
+    }
+
+    #[test]
     fn cached_layout_is_reused_for_component() {
         let schema = schema_with_structures();
         let component = schema.components.get("Block").unwrap();
@@ -473,17 +596,23 @@ mod tests {
     #[test]
     fn collect_group_layout_counts_nested_components() {
         let field = sample_field_node(false);
+        let component = ComponentNode {
+            name: "Comp".into(),
+            fields: vec![field.clone()],
+            groups: Vec::new(),
+            components: Vec::new(),
+            entries: vec![ContainerNode::Field(field.clone())],
+        };
         let group = GroupNode {
             name: "Group".into(),
             required: false,
             fields: vec![field.clone()],
-            components: vec![ComponentNode {
-                name: "Comp".into(),
-                fields: vec![field],
-                groups: Vec::new(),
-                components: Vec::new(),
-            }],
+            components: vec![component.clone()],
             groups: Vec::new(),
+            entries: vec![
+                ContainerNode::Field(field.clone()),
+                ContainerNode::Component(component),
+            ],
         };
         let mut stats = LayoutStats::default();
         collect_group_layout(&group, 0, &mut stats);
@@ -502,6 +631,7 @@ mod tests {
             fields: Vec::new(),
             components: Vec::new(),
             groups: Vec::new(),
+            entries: Vec::new(),
         };
         let cell = message_cell(&msg, colours);
         assert!(cell.text.contains("Heartbeat"));
@@ -847,18 +977,12 @@ impl<'a, 'b, W: Write> RenderContext<'a, 'b, W> {
             colours.reset
         )?;
 
-        self.print_field_collection(&msg.fields, indent_level + 2, shared_style)?;
-        for component in &msg.components {
-            self.render_component_with_style(
-                Some(msg),
-                component,
-                indent_level + NEST_INDENT,
-                shared_style,
-            )?;
-        }
-        for group in &msg.groups {
-            self.render_group_with_style(group, indent_level + NEST_INDENT, shared_style)?;
-        }
+        self.render_container_entries(
+            Some(msg),
+            &msg.entries,
+            indent_level + NEST_INDENT,
+            shared_style,
+        )?;
 
         if include_trailer && let Some(trailer) = self.schema.components.get("Trailer") {
             self.render_component_with_style(Some(msg), trailer, indent_level, shared_style)?;
@@ -899,20 +1023,7 @@ impl<'a, 'b, W: Write> RenderContext<'a, 'b, W> {
             colours.reset
         )?;
 
-        for field in &component.fields {
-            print_field(self.out, field, indent_level + NEST_INDENT, colours)?;
-            if self.verbose {
-                self.print_enums_for_field(field, msg, indent_level + NEST_INDENT + 2, style)?;
-            }
-        }
-
-        for sub in &component.components {
-            self.render_component_with_style(msg, sub, indent_level + NEST_INDENT, style)?;
-        }
-
-        for group in &component.groups {
-            self.render_group_with_style(group, indent_level + NEST_INDENT, style)?;
-        }
+        self.render_container_entries(msg, &component.entries, indent_level + NEST_INDENT, style)?;
         Ok(())
     }
 
@@ -952,42 +1063,31 @@ impl<'a, 'b, W: Write> RenderContext<'a, 'b, W> {
             )?;
         }
 
-        self.print_field_collection(&group.fields, indent_level + NEST_INDENT, style)?;
-
-        for component in &group.components {
-            self.render_component_with_style(None, component, indent_level + NEST_INDENT, style)?;
-        }
-
-        for sub_group in &group.groups {
-            self.render_group_with_style(sub_group, indent_level + NEST_INDENT, style)?;
-        }
+        self.render_container_entries(None, &group.entries, indent_level + NEST_INDENT, style)?;
         Ok(())
     }
 
-    fn print_field_collection(
+    fn render_container_entries(
         &mut self,
-        fields: &'b [FieldNode],
+        msg: Option<&'b MessageNode>,
+        entries: &'b [ContainerNode],
         indent_level: usize,
         style: DisplayStyle,
     ) -> io::Result<()> {
         let colours = style.colours();
-        for field in fields {
-            print_field(self.out, field, indent_level, colours)?;
-            if self.verbose {
-                if style.columns_enabled() {
-                    let values =
-                        collect_sorted_values(&mut self.enum_buf, field.field.values_iter());
-                    print_enum_columns(
-                        self.out,
-                        values,
-                        indent_level + 2,
-                        colours,
-                        style.layout(),
-                    )?;
-                } else {
-                    for value in field.field.values_iter() {
-                        print_enum(self.out, value, indent_level + 2, colours)?;
+        for entry in entries {
+            match entry {
+                ContainerNode::Field(field) => {
+                    print_field(self.out, field, indent_level, colours)?;
+                    if self.verbose {
+                        self.print_enums_for_field(field, msg, indent_level + 2, style)?;
                     }
+                }
+                ContainerNode::Component(component) => {
+                    self.render_component_with_style(msg, component, indent_level, style)?;
+                }
+                ContainerNode::Group(group) => {
+                    self.render_group_with_style(group, indent_level, style)?;
                 }
             }
         }
@@ -1234,13 +1334,7 @@ fn compute_message_layout(
     indent_level: usize,
 ) -> Option<ColumnLayout> {
     let mut stats = LayoutStats::default();
-    collect_fields_layout(&msg.fields, indent_level + 2, &mut stats);
-    for component in &msg.components {
-        collect_component_layout(component, indent_level, &mut stats);
-    }
-    for group in &msg.groups {
-        collect_group_layout(group, indent_level, &mut stats);
-    }
+    collect_container_layout(&msg.entries, indent_level + NEST_INDENT, &mut stats);
     if include_header && let Some(header) = schema.components.get("Header") {
         collect_component_layout(header, indent_level, &mut stats);
     }
@@ -1296,22 +1390,30 @@ fn collect_component_layout(
     indent_level: usize,
     stats: &mut LayoutStats,
 ) {
-    collect_fields_layout(&component.fields, indent_level + NEST_INDENT + 2, stats);
-    for sub in &component.components {
-        collect_component_layout(sub, indent_level + NEST_INDENT, stats);
-    }
-    for group in &component.groups {
-        collect_group_layout(group, indent_level + NEST_INDENT, stats);
-    }
+    collect_container_layout(&component.entries, indent_level + NEST_INDENT, stats);
 }
 
 fn collect_group_layout(group: &GroupNode, indent_level: usize, stats: &mut LayoutStats) {
-    collect_fields_layout(&group.fields, indent_level + NEST_INDENT + 2, stats);
-    for component in &group.components {
-        collect_component_layout(component, indent_level + NEST_INDENT, stats);
-    }
-    for sub in &group.groups {
-        collect_group_layout(sub, indent_level + NEST_INDENT, stats);
+    collect_container_layout(&group.entries, indent_level + NEST_INDENT, stats);
+}
+
+fn collect_container_layout(
+    entries: &[ContainerNode],
+    indent_level: usize,
+    stats: &mut LayoutStats,
+) {
+    for entry in entries {
+        match entry {
+            ContainerNode::Field(field) => {
+                collect_fields_layout(std::slice::from_ref(field), indent_level + 2, stats)
+            }
+            ContainerNode::Component(component) => {
+                collect_component_layout(component, indent_level, stats);
+            }
+            ContainerNode::Group(group) => {
+                collect_group_layout(group, indent_level, stats);
+            }
+        }
     }
 }
 

@@ -372,18 +372,26 @@ pub struct FieldNode {
 #[derive(Debug, Clone)]
 pub struct ComponentNode {
     pub name: String,
+    #[allow(dead_code)]
     pub fields: Vec<FieldNode>,
+    #[allow(dead_code)]
     pub groups: Vec<GroupNode>,
+    #[allow(dead_code)]
     pub components: Vec<ComponentNode>,
+    pub entries: Vec<ContainerNode>,
 }
 
 #[derive(Debug, Clone)]
 pub struct GroupNode {
     pub name: String,
     pub required: bool,
+    #[allow(dead_code)]
     pub fields: Vec<FieldNode>,
+    #[allow(dead_code)]
     pub components: Vec<ComponentNode>,
+    #[allow(dead_code)]
     pub groups: Vec<GroupNode>,
+    pub entries: Vec<ContainerNode>,
 }
 
 #[derive(Debug, Clone)]
@@ -391,9 +399,20 @@ pub struct MessageNode {
     pub name: String,
     pub msg_type: String,
     pub msg_cat: String,
+    #[allow(dead_code)]
     pub fields: Vec<FieldNode>,
+    #[allow(dead_code)]
     pub components: Vec<ComponentNode>,
+    #[allow(dead_code)]
     pub groups: Vec<GroupNode>,
+    pub entries: Vec<ContainerNode>,
+}
+
+#[derive(Debug, Clone)]
+pub enum ContainerNode {
+    Field(FieldNode),
+    Group(GroupNode),
+    Component(ComponentNode),
 }
 
 #[derive(Debug, Clone)]
@@ -522,47 +541,108 @@ impl<'a> ComponentBuilder<'a> {
     }
 
     fn build_component_from_def(&mut self, comp: &ComponentDef) -> ComponentNode {
-        let mut node = ComponentNode {
-            name: comp.name.clone(),
-            fields: build_field_nodes(&comp.fields, self.fields),
-            groups: Vec::new(),
-            components: Vec::new(),
+        let mut entries = self.build_container_nodes(&comp.entries);
+        let (fields, components, groups) = if entries.is_empty() {
+            (
+                build_field_nodes(&comp.fields, self.fields),
+                comp.components
+                    .iter()
+                    .filter_map(|cref| self.build_component(&cref.name))
+                    .collect(),
+                comp.groups
+                    .iter()
+                    .map(|group| self.build_group_from_def(group))
+                    .collect(),
+            )
+        } else {
+            split_container_nodes(&entries)
         };
-
-        for cref in comp.components.iter() {
-            if let Some(child) = self.build_component(&cref.name) {
-                node.components.push(child);
-            }
+        if entries.is_empty() {
+            entries = compose_container_nodes(&fields, &components, &groups);
         }
-
-        for group in comp.groups.iter() {
-            node.groups.push(self.build_group_from_def(group));
+        ComponentNode {
+            name: comp.name.clone(),
+            fields,
+            groups,
+            components,
+            entries,
         }
-
-        node
     }
 
     fn build_group_from_def(&mut self, group: &GroupDef) -> GroupNode {
-        let mut node = GroupNode {
+        let mut entries = self.build_container_nodes(&group.entries);
+        let (fields, components, groups) = if entries.is_empty() {
+            (
+                build_field_nodes(&group.fields, self.fields),
+                group
+                    .components
+                    .iter()
+                    .filter_map(|cref| self.build_component(&cref.name))
+                    .collect(),
+                group
+                    .groups
+                    .iter()
+                    .map(|sub_group| self.build_group_from_def(sub_group))
+                    .collect(),
+            )
+        } else {
+            split_container_nodes(&entries)
+        };
+        if entries.is_empty() {
+            entries = compose_container_nodes(&fields, &components, &groups);
+        }
+        GroupNode {
             name: group.name.clone(),
             required: group.required.as_deref() == Some("Y"),
-            fields: build_field_nodes(&group.fields, self.fields),
-            components: Vec::new(),
-            groups: Vec::new(),
-        };
+            fields,
+            components,
+            groups,
+            entries,
+        }
+    }
 
-        for cref in group.components.iter() {
-            if let Some(child) = self.build_component(&cref.name) {
-                node.components.push(child);
+    fn build_container_nodes(&mut self, entries: &[ContainerEntry]) -> Vec<ContainerNode> {
+        let mut nodes = Vec::with_capacity(entries.len());
+        for entry in entries {
+            match entry {
+                ContainerEntry::Field(field_ref) => {
+                    if let Some(field) = self.fields.get(&field_ref.name) {
+                        nodes.push(ContainerNode::Field(FieldNode {
+                            required: field_ref.required.as_deref() == Some("Y"),
+                            field: field.clone(),
+                        }));
+                    }
+                }
+                ContainerEntry::Group(group) => {
+                    nodes.push(ContainerNode::Group(self.build_group_from_def(group)));
+                }
+                ContainerEntry::Component(component) => {
+                    if let Some(child) = self.build_component(&component.name) {
+                        nodes.push(ContainerNode::Component(child));
+                    }
+                }
             }
         }
-
-        for sub_group in group.groups.iter() {
-            node.groups.push(self.build_group_from_def(sub_group));
-        }
-
-        node
+        nodes
     }
+}
+
+fn split_container_nodes(
+    entries: &[ContainerNode],
+) -> (Vec<FieldNode>, Vec<ComponentNode>, Vec<GroupNode>) {
+    let mut fields = Vec::new();
+    let mut components = Vec::new();
+    let mut groups = Vec::new();
+
+    for entry in entries {
+        match entry {
+            ContainerNode::Field(field) => fields.push(field.clone()),
+            ContainerNode::Component(component) => components.push(component.clone()),
+            ContainerNode::Group(group) => groups.push(group.clone()),
+        }
+    }
+
+    (fields, components, groups)
 }
 
 fn build_message_node(
@@ -570,26 +650,54 @@ fn build_message_node(
     fields: &BTreeMap<String, Arc<Field>>,
     builder: &mut ComponentBuilder,
 ) -> MessageNode {
-    let mut node = MessageNode {
+    let mut entries = builder.build_container_nodes(&msg.entries);
+    let (message_fields, components, groups) = split_container_nodes(&entries);
+    let fields = if entries.is_empty() {
+        build_field_nodes(&msg.fields, fields)
+    } else {
+        message_fields
+    };
+    let components = if entries.is_empty() {
+        msg.components
+            .iter()
+            .filter_map(|cref| builder.build_component(&cref.name))
+            .collect()
+    } else {
+        components
+    };
+    let groups = if entries.is_empty() {
+        msg.groups
+            .iter()
+            .map(|group| builder.build_group_from_def(group))
+            .collect()
+    } else {
+        groups
+    };
+    if entries.is_empty() {
+        entries = compose_container_nodes(&fields, &components, &groups);
+    }
+
+    MessageNode {
         name: msg.name.clone(),
         msg_type: msg.msg_type.clone(),
         msg_cat: msg.msg_cat.clone(),
-        fields: build_field_nodes(&msg.fields, fields),
-        components: Vec::new(),
-        groups: Vec::new(),
-    };
-
-    for cref in msg.components.iter() {
-        if let Some(sub) = builder.build_component(&cref.name) {
-            node.components.push(sub);
-        }
+        fields,
+        components,
+        groups,
+        entries,
     }
+}
 
-    for group in msg.groups.iter() {
-        node.groups.push(builder.build_group_from_def(group));
-    }
-
-    node
+fn compose_container_nodes(
+    fields: &[FieldNode],
+    components: &[ComponentNode],
+    groups: &[GroupNode],
+) -> Vec<ContainerNode> {
+    let mut entries = Vec::with_capacity(fields.len() + components.len() + groups.len());
+    entries.extend(fields.iter().cloned().map(ContainerNode::Field));
+    entries.extend(components.iter().cloned().map(ContainerNode::Component));
+    entries.extend(groups.iter().cloned().map(ContainerNode::Group));
+    entries
 }
 
 #[cfg(test)]
@@ -635,5 +743,55 @@ mod tests {
         assert_eq!(root.items.len(), 2);
         assert_eq!(root.items[0].name, "one");
         assert_eq!(root.items[1].name, "two");
+    }
+
+    #[test]
+    fn schema_tree_preserves_message_entry_order() {
+        let xml = r#"
+<fix type='FIX' major='4' minor='4'>
+  <header>
+    <field name='BeginString' required='Y'/>
+  </header>
+  <trailer>
+    <field name='CheckSum' required='Y'/>
+  </trailer>
+  <messages>
+    <message name='Ordered' msgtype='Z' msgcat='app'>
+      <field name='FirstField' required='Y'/>
+      <component name='Instrument'/>
+      <field name='SecondField' required='N'/>
+    </message>
+  </messages>
+  <components>
+    <component name='Instrument'>
+      <field name='Symbol' required='Y'/>
+    </component>
+  </components>
+  <fields>
+    <field number='8' name='BeginString' type='STRING'/>
+    <field number='10' name='CheckSum' type='STRING'/>
+    <field number='35' name='MsgType' type='STRING'/>
+    <field number='55' name='Symbol' type='STRING'/>
+    <field number='1001' name='FirstField' type='STRING'/>
+    <field number='1002' name='SecondField' type='STRING'/>
+  </fields>
+</fix>
+"#;
+
+        let dict = FixDictionary::from_xml(xml).expect("dictionary parses");
+        let schema = SchemaTree::build(dict);
+        let message = schema.messages.get("Ordered").expect("ordered message");
+
+        let names: Vec<&str> = message
+            .entries
+            .iter()
+            .map(|entry| match entry {
+                ContainerNode::Field(field) => field.field.name.as_str(),
+                ContainerNode::Component(component) => component.name.as_str(),
+                ContainerNode::Group(group) => group.name.as_str(),
+            })
+            .collect();
+
+        assert_eq!(names, vec!["FirstField", "Instrument", "SecondField"]);
     }
 }

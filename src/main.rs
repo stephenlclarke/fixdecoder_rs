@@ -42,6 +42,13 @@ struct CustomDictionary {
     path: String,
 }
 
+struct DictionarySummary {
+    service_pack: String,
+    field_count: usize,
+    component_count: usize,
+    message_count: usize,
+}
+
 /// Build-time version information.  The CI pipeline bakes in the most recent
 /// tag via `FIXDECODER_VERSION`; otherwise we fall back to Cargo’s package
 /// version which tracks the published crate.
@@ -1179,6 +1186,7 @@ fn load_schema(
 }
 
 /// Load a dictionary for a specific canonical key, preferring custom entries when present.
+#[cfg(test)]
 fn load_schema_for_key(
     key: &str,
     custom_dicts: &HashMap<String, CustomDictionary>,
@@ -1191,6 +1199,19 @@ fn load_schema_for_key(
     };
     ensure_session_components(&normalized, &mut dict);
     Ok(SchemaTree::build(dict))
+}
+
+fn load_dictionary_summary_for_key(
+    key: &str,
+    custom_dicts: &HashMap<String, CustomDictionary>,
+) -> Result<DictionarySummary> {
+    let normalized = key.to_ascii_uppercase();
+    let dict = if let Some(custom) = custom_dicts.get(&normalized) {
+        custom.dict.clone()
+    } else {
+        load_embedded_dictionary_for_key(&normalized)?
+    };
+    Ok(summarise_dictionary(&dict))
 }
 
 /// Handle non-streaming commands such as `--message`, `--tag`, `--component`
@@ -1336,6 +1357,46 @@ fn dictionary_source(custom_dicts: &HashMap<String, CustomDictionary>, key: &str
     "built-in".to_string()
 }
 
+fn summarise_dictionary(dict: &FixDictionary) -> DictionarySummary {
+    use std::collections::BTreeSet;
+
+    let field_count = dict
+        .fields
+        .items
+        .iter()
+        .map(|field| field.name.clone())
+        .collect::<BTreeSet<_>>()
+        .len();
+    let component_count = dict
+        .components
+        .items
+        .iter()
+        .map(|component| component.name.clone())
+        .chain(["Header".to_string(), "Trailer".to_string()])
+        .collect::<BTreeSet<_>>()
+        .len();
+    let message_count = dict
+        .messages
+        .items
+        .iter()
+        .map(|message| message.name.clone())
+        .collect::<BTreeSet<_>>()
+        .len();
+    let service_pack = dict
+        .service_pack
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .unwrap_or("-")
+        .to_string();
+
+    DictionarySummary {
+        service_pack,
+        field_count,
+        component_count,
+        message_count,
+    }
+}
+
 /// Print the table header for dictionary listings.
 fn print_dictionary_header() {
     println!(
@@ -1345,15 +1406,15 @@ fn print_dictionary_header() {
 }
 
 /// Print one row of dictionary metadata.
-fn print_dictionary_row(marker: &str, key: &str, schema: &SchemaTree, source: &str) {
+fn print_dictionary_row(marker: &str, key: &str, summary: &DictionarySummary, source: &str) {
     println!(
         "  {:<1}{:<10} {:>12} {:>8} {:>11} {:>11} {}",
         marker,
         key,
-        schema.service_pack,
-        schema.fields.len(),
-        schema.components.len(),
-        schema.messages.len(),
+        summary.service_pack,
+        summary.field_count,
+        summary.component_count,
+        summary.message_count,
         source
     );
 }
@@ -1434,11 +1495,11 @@ fn print_all_dictionary_info(
     print_dictionary_header();
 
     for key in all_dictionary_keys(custom_dicts) {
-        match load_schema_for_key(&key, custom_dicts) {
-            Ok(schema) => {
+        match load_dictionary_summary_for_key(&key, custom_dicts) {
+            Ok(summary) => {
                 let source = dictionary_source(custom_dicts, &key);
                 let marker = dictionary_marker(highlight, &key);
-                print_dictionary_row(marker, &key, &schema, &source);
+                print_dictionary_row(marker, &key, &summary, &source);
             }
             Err(err) => eprintln!("warning: failed to load {key}: {err}"),
         }
@@ -2104,6 +2165,17 @@ mod tests {
             _required: Some("Y".into()),
         });
         assert!(component_def_has_entries(&block));
+    }
+
+    #[test]
+    fn summarise_dictionary_counts_header_and_trailer_once() {
+        let dict = FixDictionary::from_xml(fix::choose_embedded_xml("44")).expect("parse FIX44");
+        let summary = summarise_dictionary(&dict);
+
+        assert_eq!(summary.field_count, dict.fields.items.len());
+        assert_eq!(summary.message_count, dict.messages.items.len());
+        assert_eq!(summary.component_count, dict.components.items.len() + 2);
+        assert_eq!(summary.service_pack, "0");
     }
 
     #[test]
