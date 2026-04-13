@@ -10,7 +10,7 @@ use crate::decoder::summary::OrderSummary;
 use crate::decoder::tag_lookup::MessageDef;
 use crate::decoder::tag_lookup::{
     FixTagLookup, GroupSpec as MessageDefGroupSpec, MessageDef as LookupMessageDef,
-    load_dictionary_with_override,
+    default_appl_ver_key, load_dictionary_with_session_default,
 };
 use crate::decoder::validator;
 use crate::fix;
@@ -20,6 +20,7 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
@@ -74,6 +75,7 @@ pub struct PrettifyContext<'a> {
     pub live_status_enabled: bool,
     pub validation_enabled: bool,
     pub message_counts: HashMap<String, MsgTypeCount>,
+    pub fixt_session_defaults: HashMap<FixtSessionKey, String>,
     pub counts_dirty: bool,
     pub interrupted: &'static AtomicBool,
 }
@@ -82,6 +84,29 @@ pub struct PrettifyContext<'a> {
 pub struct MsgTypeCount {
     pub count: usize,
     pub label: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct FixtSessionParty {
+    comp_id: String,
+    sub_id: Option<String>,
+    location_id: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct FixtSessionKey {
+    first: FixtSessionParty,
+    second: FixtSessionParty,
+}
+
+impl FixtSessionParty {
+    fn from_message(msg: &str, comp_tag: &str, sub_tag: &str, location_tag: &str) -> Option<Self> {
+        Some(Self {
+            comp_id: extract_tag_value(msg, comp_tag)?.to_string(),
+            sub_id: extract_tag_value(msg, sub_tag).map(str::to_string),
+            location_id: extract_tag_value(msg, location_tag).map(str::to_string),
+        })
+    }
 }
 
 static FIX_REGEX: Lazy<Regex> =
@@ -706,6 +731,47 @@ fn announce_source(label: &str, ctx: &mut PrettifyContext) {
     );
 }
 
+fn extract_tag_value<'a>(msg: &'a str, tag: &str) -> Option<&'a str> {
+    for field in msg.split('\u{0001}') {
+        if let Some((lhs, rhs)) = field.split_once('=')
+            && lhs == tag
+        {
+            return Some(rhs);
+        }
+    }
+    None
+}
+
+fn fixt_session_key(msg: &str) -> Option<FixtSessionKey> {
+    if extract_tag_value(msg, "8")? != "FIXT.1.1" {
+        return None;
+    }
+
+    let sender = FixtSessionParty::from_message(msg, "49", "50", "142")?;
+    let target = FixtSessionParty::from_message(msg, "56", "57", "143")?;
+    let (first, second) = if sender <= target {
+        (sender, target)
+    } else {
+        (target, sender)
+    };
+    Some(FixtSessionKey { first, second })
+}
+
+fn resolve_dictionary(msg: &str, ctx: &mut PrettifyContext) -> Arc<FixTagLookup> {
+    let session_default =
+        fixt_session_key(msg).and_then(|key| ctx.fixt_session_defaults.get(&key).cloned());
+    let dict =
+        load_dictionary_with_session_default(msg, ctx.fix_override, session_default.as_deref());
+
+    if let Some(default_key) = default_appl_ver_key(msg)
+        && let Some(session_key) = fixt_session_key(msg)
+    {
+        ctx.fixt_session_defaults.insert(session_key, default_key);
+    }
+
+    dict
+}
+
 fn trim_line_endings(line: &mut String) {
     if line.ends_with('\n') {
         line.pop();
@@ -762,13 +828,16 @@ fn process_without_validation(
 
     let (messages, coloured_line) =
         extract_messages_and_format(line, &matches, ctx.display_delimiter);
+    let dictionaries: Vec<Arc<FixTagLookup>> = messages
+        .iter()
+        .map(|msg| resolve_dictionary(msg, ctx))
+        .collect();
 
     if ctx.summary.is_none() {
-        let separator_width = messages
-            .iter()
-            .fold(max_visible_line_width(&coloured_line), |acc, msg| {
-                acc.max(separator_width_for_message(msg, ctx.fix_override, false))
-            });
+        let separator_width = messages.iter().zip(dictionaries.iter()).fold(
+            max_visible_line_width(&coloured_line),
+            |acc, (msg, dict)| acc.max(separator_width_for_message(msg, dict.as_ref(), false)),
+        );
         write_source_line(ctx, line_number, &coloured_line)?;
         write!(
             ctx.out,
@@ -777,8 +846,8 @@ fn process_without_validation(
         )?;
     }
 
-    record_messages(&messages, ctx);
-    emit_messages(&messages, ctx)?;
+    record_messages(&messages, &dictionaries, ctx);
+    emit_messages(&messages, &dictionaries, ctx)?;
 
     render_summary_footer(ctx)
 }
@@ -793,8 +862,16 @@ fn process_with_validation(
         return Ok(());
     }
 
-    for (start, end) in &matches {
-        track_message(&line[*start..*end], ctx);
+    let resolved: Vec<(&str, Arc<FixTagLookup>)> = matches
+        .iter()
+        .map(|(start, end)| {
+            let msg = &line[*start..*end];
+            let dict = resolve_dictionary(msg, ctx);
+            (msg, dict)
+        })
+        .collect();
+    for (msg, dict) in &resolved {
+        track_message(msg, dict.as_ref(), ctx);
     }
     render_summary_footer(ctx)?;
 
@@ -802,9 +879,7 @@ fn process_with_validation(
     let colours = palette();
     let display_line = apply_display_delimiter(line, ctx.display_delimiter);
 
-    for (start, end) in matches {
-        let msg = &line[start..end];
-        let dict = load_dictionary_with_override(msg, ctx.fix_override);
+    for (msg, dict) in resolved {
         let report = validator::validate_fix_message(msg, &dict);
         if report.is_clean() {
             continue;
@@ -840,27 +915,30 @@ fn stream_invalid_message(
     Ok(())
 }
 
-fn record_messages(messages: &[String], ctx: &mut PrettifyContext) {
-    for msg in messages {
-        track_message(msg, ctx);
+fn record_messages(
+    messages: &[String],
+    dictionaries: &[Arc<FixTagLookup>],
+    ctx: &mut PrettifyContext,
+) {
+    for (msg, dict) in messages.iter().zip(dictionaries.iter()) {
+        track_message(msg, dict.as_ref(), ctx);
     }
 }
 
-fn track_message(msg: &str, ctx: &mut PrettifyContext) {
+fn track_message(msg: &str, dict: &FixTagLookup, ctx: &mut PrettifyContext) {
     if !ctx.validation_enabled {
-        record_msg_type(msg, ctx);
+        record_msg_type(msg, dict, ctx);
     }
     if let Some(ref mut tracker) = ctx.summary.as_mut() {
-        tracker.record_message(msg, ctx.fix_override);
+        tracker.record_message_with_lookup(msg, dict, ctx.fix_override);
     }
 }
 
-fn record_msg_type(msg: &str, ctx: &mut PrettifyContext) {
+fn record_msg_type(msg: &str, dict: &FixTagLookup, ctx: &mut PrettifyContext) {
     if let Some(mt) = extract_msg_type(msg) {
         let entry = ctx.message_counts.entry(mt.clone()).or_default();
         entry.count += 1;
         if entry.label.is_none() {
-            let dict = load_dictionary_with_override(msg, ctx.fix_override);
             entry.label = dict.enum_description(35, &mt).map(|s| s.to_string());
         }
         ctx.counts_dirty = true;
@@ -879,16 +957,20 @@ fn extract_msg_type(msg: &str) -> Option<String> {
     None
 }
 
-fn emit_messages(messages: &[String], ctx: &mut PrettifyContext) -> io::Result<()> {
+fn emit_messages(
+    messages: &[String],
+    dictionaries: &[Arc<FixTagLookup>],
+    ctx: &mut PrettifyContext,
+) -> io::Result<()> {
     if ctx.summary.is_some() {
         return Ok(());
     }
 
-    for msg in messages {
+    for (msg, dict) in messages.iter().zip(dictionaries.iter()) {
         process_fix_message(
             msg,
+            dict.as_ref(),
             ctx.out,
-            ctx.fix_override,
             ctx.validation_enabled,
             ctx.style,
             ctx.wide_grid,
@@ -1012,15 +1094,14 @@ fn apply_display_delimiter<'a>(text: &'a str, delimiter: char) -> Cow<'a, str> {
 /// Render a single FIX message (and validation errors when enabled) to the output stream.
 fn process_fix_message(
     msg: &str,
+    dict: &FixTagLookup,
     out: &mut dyn Write,
-    fix_override: Option<&str>,
     validation_enabled: bool,
     style: OutputStyle,
     wide_grid: bool,
 ) -> io::Result<()> {
-    let dict = load_dictionary_with_override(msg, fix_override);
-    let pretty = prettify_with_report(msg, &dict, None);
-    let report = validation_enabled.then(|| validator::validate_fix_message(msg, &dict));
+    let pretty = prettify_with_report(msg, dict, None);
+    let report = validation_enabled.then(|| validator::validate_fix_message(msg, dict));
     let separator_width = separator_width_for_pretty(&pretty, report.as_ref());
     let separator = render_separator(style, separator_width, wide_grid);
     write!(out, "{pretty}")?;
@@ -1039,14 +1120,9 @@ fn process_fix_message(
     Ok(())
 }
 
-fn separator_width_for_message(
-    msg: &str,
-    fix_override: Option<&str>,
-    validation_enabled: bool,
-) -> usize {
-    let dict = load_dictionary_with_override(msg, fix_override);
-    let pretty = prettify_with_report(msg, &dict, None);
-    let report = validation_enabled.then(|| validator::validate_fix_message(msg, &dict));
+fn separator_width_for_message(msg: &str, dict: &FixTagLookup, validation_enabled: bool) -> usize {
+    let pretty = prettify_with_report(msg, dict, None);
+    let report = validation_enabled.then(|| validator::validate_fix_message(msg, dict));
     separator_width_for_pretty(&pretty, report.as_ref())
 }
 
@@ -1194,6 +1270,7 @@ mod tests {
             live_status_enabled: true,
             validation_enabled: true,
             message_counts: HashMap::new(),
+            fixt_session_defaults: HashMap::new(),
             counts_dirty: false,
             interrupted: interrupt_flag(),
         };
@@ -1261,6 +1338,7 @@ mod tests {
             live_status_enabled: true,
             validation_enabled: true,
             message_counts: HashMap::new(),
+            fixt_session_defaults: HashMap::new(),
             counts_dirty: false,
             interrupted: interrupt_flag(),
         };
@@ -1316,6 +1394,7 @@ mod tests {
             live_status_enabled: true,
             validation_enabled: true,
             message_counts: HashMap::new(),
+            fixt_session_defaults: HashMap::new(),
             counts_dirty: false,
             interrupted: interrupt_flag(),
         };
@@ -1352,6 +1431,7 @@ mod tests {
             live_status_enabled: true,
             validation_enabled: true,
             message_counts: HashMap::new(),
+            fixt_session_defaults: HashMap::new(),
             counts_dirty: false,
             interrupted: interrupt_flag(),
         };
@@ -1497,6 +1577,7 @@ mod tests {
             live_status_enabled: true,
             validation_enabled: false,
             message_counts: HashMap::new(),
+            fixt_session_defaults: HashMap::new(),
             counts_dirty: false,
             interrupted: interrupt_flag(),
         };

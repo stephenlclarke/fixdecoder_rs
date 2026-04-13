@@ -286,13 +286,21 @@ fn get_tag_value<'a>(msg: &'a str, tag: &str) -> Option<&'a str> {
     None
 }
 
+#[cfg(test)]
 fn detect_schema_key(msg: &str) -> String {
+    detect_schema_key_with_default(msg, None)
+}
+
+fn detect_schema_key_with_default(msg: &str, session_default_key: Option<&str>) -> String {
     if let Some(begin) = get_tag_value(msg, "8") {
         if begin == "FIXT.1.1" {
             if let Some(appl_ver_id) =
                 get_tag_value(msg, "1128").or_else(|| get_tag_value(msg, "1137"))
                 && let Some(schema) = appl_ver_to_schema(appl_ver_id)
             {
+                return schema.to_string();
+            }
+            if let Some(schema) = session_default_key {
                 return schema.to_string();
             }
             return "FIX50".to_string();
@@ -318,24 +326,36 @@ fn appl_ver_to_schema(value: &str) -> Option<&'static str> {
     }
 }
 
+#[cfg(test)]
 pub fn load_dictionary(msg: &str) -> Arc<FixTagLookup> {
-    let key = detect_schema_key(msg);
+    let key = detect_schema_key_with_default(msg, None);
     get_dictionary(&key)
         .or_else(|| get_dictionary("FIX44"))
         .expect("FIX44 dictionary available")
 }
 
-/// Load a dictionary, allowing an override schema key to force the selection used for decoding.
-pub fn load_dictionary_with_override(msg: &str, override_key: Option<&str>) -> Arc<FixTagLookup> {
+pub fn default_appl_ver_key(msg: &str) -> Option<String> {
+    get_tag_value(msg, "1137")
+        .and_then(appl_ver_to_schema)
+        .map(str::to_string)
+}
+
+pub fn load_dictionary_with_session_default(
+    msg: &str,
+    override_key: Option<&str>,
+    session_default_key: Option<&str>,
+) -> Arc<FixTagLookup> {
+    let detected_key = detect_schema_key_with_default(msg, session_default_key);
     if let Some(key) = override_key {
-        let detected_key = detect_schema_key(msg);
         let combo_key = format!("{key}+{detected_key}");
         if let Some(existing) = LOOKUPS.read().ok().and_then(|l| l.get(&combo_key).cloned()) {
             return existing;
         }
 
         if let Some(dict) = get_dictionary(key) {
-            let fallback = load_dictionary(msg);
+            let fallback = get_dictionary(&detected_key)
+                .or_else(|| get_dictionary("FIX44"))
+                .expect("FIX44 dictionary available");
             if Arc::ptr_eq(&dict, &fallback) {
                 return dict;
             }
@@ -351,7 +371,16 @@ pub fn load_dictionary_with_override(msg: &str, override_key: Option<&str>) -> A
         );
         warn_override_miss();
     }
-    load_dictionary(msg)
+
+    get_dictionary(&detected_key)
+        .or_else(|| get_dictionary("FIX44"))
+        .expect("FIX44 dictionary available")
+}
+
+/// Load a dictionary, allowing an override schema key to force the selection used for decoding.
+#[cfg(test)]
+pub fn load_dictionary_with_override(msg: &str, override_key: Option<&str>) -> Arc<FixTagLookup> {
+    load_dictionary_with_session_default(msg, override_key, None)
 }
 
 fn warn_override_miss() {
@@ -422,7 +451,7 @@ fn build_message_defs(
     let mut map = HashMap::new();
     for msg in &messages.items {
         let (field_order, required) = expand_message_fields(msg, components, name_to_tag, true);
-        let (groups, membership) = collect_group_specs(&msg.groups, components, name_to_tag);
+        let (groups, membership) = collect_group_specs(msg, components, name_to_tag);
         map.insert(
             msg.msg_type.clone(),
             MessageDef {
@@ -562,29 +591,113 @@ fn dedupe(values: &mut Vec<u32>) {
 }
 
 fn collect_group_specs(
-    groups: &[GroupDef],
+    msg: &Message,
     components: &HashMap<String, ComponentDef>,
     name_to_tag: &HashMap<String, u32>,
 ) -> (HashMap<u32, GroupSpec>, HashMap<u32, u32>) {
     let mut specs = HashMap::new();
     let mut membership = HashMap::new();
-    let mut stack = HashSet::new();
-    for group in groups {
-        if let Some(spec) = build_group_spec(group, components, name_to_tag, &mut stack) {
-            membership.extend(collect_memberships(&spec, spec.count_tag));
-            specs.insert(spec.count_tag, spec);
-        }
+    let mut group_stack = HashSet::new();
+    let mut component_stack = HashSet::new();
+
+    for group in &msg.groups {
+        insert_group_spec(
+            group,
+            components,
+            name_to_tag,
+            &mut group_stack,
+            &mut specs,
+            &mut membership,
+        );
     }
-    // also scan groups reachable via components referenced in the message
-    for comp in components.values() {
-        for group in &comp.groups {
-            if let Some(spec) = build_group_spec(group, components, name_to_tag, &mut stack) {
-                membership.extend(collect_memberships(&spec, spec.count_tag));
-                specs.entry(spec.count_tag).or_insert(spec);
-            }
-        }
+
+    collect_component_group_specs(
+        "Header",
+        components,
+        name_to_tag,
+        &mut component_stack,
+        &mut group_stack,
+        &mut specs,
+        &mut membership,
+    );
+    for component in &msg.components {
+        collect_component_group_specs(
+            &component.name,
+            components,
+            name_to_tag,
+            &mut component_stack,
+            &mut group_stack,
+            &mut specs,
+            &mut membership,
+        );
     }
+    collect_component_group_specs(
+        "Trailer",
+        components,
+        name_to_tag,
+        &mut component_stack,
+        &mut group_stack,
+        &mut specs,
+        &mut membership,
+    );
+
     (specs, membership)
+}
+
+fn collect_component_group_specs(
+    name: &str,
+    components: &HashMap<String, ComponentDef>,
+    name_to_tag: &HashMap<String, u32>,
+    component_stack: &mut HashSet<String>,
+    group_stack: &mut HashSet<String>,
+    specs: &mut HashMap<u32, GroupSpec>,
+    membership: &mut HashMap<u32, u32>,
+) {
+    if !component_stack.insert(name.to_string()) {
+        return;
+    }
+    let Some(component) = components.get(name) else {
+        component_stack.remove(name);
+        return;
+    };
+
+    for group in &component.groups {
+        insert_group_spec(
+            group,
+            components,
+            name_to_tag,
+            group_stack,
+            specs,
+            membership,
+        );
+    }
+    for nested in &component.components {
+        collect_component_group_specs(
+            &nested.name,
+            components,
+            name_to_tag,
+            component_stack,
+            group_stack,
+            specs,
+            membership,
+        );
+    }
+
+    component_stack.remove(name);
+}
+
+fn insert_group_spec(
+    group: &GroupDef,
+    components: &HashMap<String, ComponentDef>,
+    name_to_tag: &HashMap<String, u32>,
+    group_stack: &mut HashSet<String>,
+    specs: &mut HashMap<u32, GroupSpec>,
+    membership: &mut HashMap<u32, u32>,
+) {
+    if let Some(spec) = build_group_spec(group, components, name_to_tag, group_stack) {
+        membership.extend(collect_memberships(&spec, spec.count_tag));
+        specs.entry(spec.count_tag).or_insert(spec);
+    }
 }
 
 fn build_group_spec(
@@ -822,6 +935,16 @@ mod tests {
     }
 
     #[test]
+    fn session_default_guides_fixt_messages_without_appl_ver_id() {
+        let _lock = LOOKUP_TEST_GUARD.lock().unwrap();
+        let msg = "8=FIXT.1.1\u{0001}35=0\u{0001}10=000\u{0001}";
+        assert_eq!(
+            detect_schema_key_with_default(msg, Some("FIX50SP2")),
+            "FIX50SP2"
+        );
+    }
+
+    #[test]
     fn load_dictionary_respects_override_key() {
         let _lock = LOOKUP_TEST_GUARD.lock().unwrap();
         reset_override_warn();
@@ -907,5 +1030,30 @@ mod tests {
         assert!(lookup.is_repeatable(901), "outer field repeatable");
         assert!(lookup.is_repeatable(910), "nested group count tag tracked");
         assert!(lookup.is_repeatable(911), "nested field repeatable");
+    }
+
+    #[test]
+    fn new_order_single_does_not_inherit_unreachable_group_memberships() {
+        let _lock = LOOKUP_TEST_GUARD.lock().unwrap();
+        let msg = "8=FIX.4.4\u{0001}35=D\u{0001}10=000\u{0001}";
+        let dict = load_dictionary(msg);
+        let message = dict.message_def("D").expect("new order single definition");
+
+        assert!(
+            !message.group_membership.contains_key(&11),
+            "ClOrdID should not be treated as a repeating-group member"
+        );
+        assert!(
+            !message.group_membership.contains_key(&40),
+            "OrdType should not be treated as a repeating-group member"
+        );
+        assert!(
+            !message.group_membership.contains_key(&54),
+            "Side should not be treated as a repeating-group member"
+        );
+        assert!(
+            !message.group_membership.contains_key(&60),
+            "TransactTime should not be treated as a repeating-group member"
+        );
     }
 }

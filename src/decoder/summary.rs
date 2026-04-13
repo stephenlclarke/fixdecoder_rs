@@ -4,9 +4,9 @@
 use crate::decoder::colours::palette;
 use crate::decoder::display::{pad_ansi, visible_width};
 use crate::decoder::fixparser::parse_fix;
-use crate::decoder::tag_lookup::{
-    FixTagLookup, clear_override_cache_for, load_dictionary_with_override,
-};
+#[cfg(test)]
+use crate::decoder::tag_lookup::load_dictionary_with_override;
+use crate::decoder::tag_lookup::{FixTagLookup, clear_override_cache_for};
 use chrono::{Datelike, Duration, NaiveDate};
 use std::collections::{HashMap, hash_map::Entry};
 use std::io::Write;
@@ -94,7 +94,18 @@ impl OrderSummary {
         }
     }
 
+    #[cfg(test)]
     pub fn record_message(&mut self, msg: &str, fix_override: Option<&str>) {
+        let dict = load_dictionary_with_override(msg, fix_override);
+        self.record_message_with_lookup(msg, &dict, fix_override);
+    }
+
+    pub fn record_message_with_lookup(
+        &mut self,
+        msg: &str,
+        dict: &FixTagLookup,
+        fix_override: Option<&str>,
+    ) {
         let fields = parse_fix(msg);
         if fields.is_empty() {
             return;
@@ -117,7 +128,6 @@ impl OrderSummary {
             cl_ord_id.as_deref(),
             orig_cl_ord_id.as_deref(),
         );
-        let dict = load_dictionary_with_override(msg, fix_override);
         self.note_aliases(&key, order_id, cl_ord_id, orig_cl_ord_id);
         let record = match self.orders.entry(key.clone()) {
             Entry::Occupied(o) => o.into_mut(),
@@ -140,9 +150,9 @@ impl OrderSummary {
             map.get(&11).cloned(),
             map.get(&41).cloned(),
         );
-        record.absorb_fields(&map, &dict, map.get(&35).map(|s| s.as_str()));
+        record.absorb_fields(&map, dict, map.get(&35).map(|s| s.as_str()));
 
-        let event = OrderEvent::from_fields(&map, &dict);
+        let event = OrderEvent::from_fields(&map, dict);
         record.events.push(event);
         record
             .messages

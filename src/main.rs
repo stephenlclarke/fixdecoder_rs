@@ -434,6 +434,7 @@ fn build_context<'a>(
         live_status_enabled: stdout_is_terminal && !pager_active,
         validation_enabled: opts.validate,
         message_counts: std::collections::HashMap::new(),
+        fixt_session_defaults: std::collections::HashMap::new(),
         counts_dirty: false,
         interrupted: decoder::prettifier::interrupt_flag(),
     }
@@ -1346,10 +1347,13 @@ fn available_fix_versions(custom_dicts: &HashMap<String, CustomDictionary>) -> S
 /// Return the source path for a dictionary key, falling back to “built-in”.
 fn dictionary_source(custom_dicts: &HashMap<String, CustomDictionary>, key: &str) -> String {
     let normalized = key.to_ascii_uppercase();
-    custom_dicts
-        .get(&normalized)
-        .map(|c| c.path.clone())
-        .unwrap_or_else(|| "built-in".to_string())
+    if let Some(custom) = custom_dicts.get(&normalized) {
+        return custom.path.clone();
+    }
+    if matches!(normalized.as_str(), "FIX27" | "FIX30") {
+        return "built-in alias of FIX40".to_string();
+    }
+    "built-in".to_string()
 }
 
 /// Print the table header for dictionary listings.
@@ -1420,6 +1424,7 @@ fn component_def_has_entries(block: &decoder::schema::ComponentDef) -> bool {
 /// Map a canonical FIX key to the embedded XML identifier used by `choose_embedded_xml`.
 fn key_to_xml_id(key: &str) -> Option<&'static str> {
     match key.to_ascii_uppercase().as_str() {
+        // FIX27 and FIX30 are compatibility aliases for the embedded FIX40 schema.
         "FIX27" => Some("40"),
         "FIX30" => Some("40"),
         "FIX40" => Some("40"),
@@ -1982,6 +1987,14 @@ mod tests {
 
         assert_eq!(dictionary_source(&custom, "fix44"), "/tmp/custom44.xml");
         assert_eq!(dictionary_source(&HashMap::new(), "FIX44"), "built-in");
+        assert_eq!(
+            dictionary_source(&HashMap::new(), "FIX27"),
+            "built-in alias of FIX40"
+        );
+        assert_eq!(
+            dictionary_source(&HashMap::new(), "fix30"),
+            "built-in alias of FIX40"
+        );
         let all = all_dictionary_keys(&custom);
         assert!(all.contains(&"FIX44".into()));
         assert!(all.contains(&"FIX27".into()));

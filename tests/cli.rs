@@ -12,6 +12,18 @@ fn fix_message(body: &str) -> String {
     format!("8=FIX.4.4{soh}9=005{soh}{body}10=000{soh}\n")
 }
 
+fn valid_fix_message(begin_string: &str, fields: &[(&str, &str)]) -> String {
+    let soh = '\u{0001}';
+    let body: String = fields
+        .iter()
+        .map(|(tag, value)| format!("{tag}={value}{soh}"))
+        .collect();
+    let mut msg = format!("8={begin_string}{soh}9={}{}{body}", body.len(), soh);
+    let checksum = msg.bytes().fold(0u16, |acc, b| acc + b as u16) % 256;
+    msg.push_str(&format!("10={checksum:03}{soh}\n"));
+    msg
+}
+
 #[test]
 fn decodes_single_message_from_stdin() {
     let msg = fix_message("35=0");
@@ -215,6 +227,15 @@ fn info_flag_lists_available_dictionaries_and_highlights_selection() {
 }
 
 #[test]
+fn info_flag_marks_fix27_and_fix30_as_fix40_aliases() {
+    cargo_bin_cmd!("fixdecoder")
+        .args(["--fix=27", "--info"])
+        .assert()
+        .success()
+        .stdout(contains("FIX27").and(contains("built-in alias of FIX40")));
+}
+
+#[test]
 fn message_listing_works_in_plain_and_column_modes() {
     cargo_bin_cmd!("fixdecoder")
         .args(["--fix=44", "--message"])
@@ -336,4 +357,69 @@ fn missing_component_is_reported() {
         .assert()
         .success()
         .stdout(contains("Component not found: NoSuchComponent"));
+}
+
+#[test]
+fn fixt_logon_default_appl_ver_applies_to_later_messages() {
+    let mut xml = NamedTempFile::new().expect("temp xml");
+    write!(
+        xml,
+        "<fix type='FIX' major='5' minor='0' servicepack='2'>
+  <header/>
+  <trailer/>
+  <messages>
+    <message name='Heartbeat' msgtype='0' msgcat='admin'>
+      <field name='MsgType' required='Y'/>
+      <field name='CustomSp2Tag' required='N'/>
+    </message>
+    <message name='Logon' msgtype='A' msgcat='admin'>
+      <field name='MsgType' required='Y'/>
+      <field name='DefaultApplVerID' required='N'/>
+    </message>
+  </messages>
+  <components/>
+  <fields>
+    <field number='35' name='MsgType' type='STRING'>
+      <value enum='0' description='HEARTBEAT'/>
+      <value enum='A' description='LOGON'/>
+    </field>
+    <field number='1137' name='DefaultApplVerID' type='STRING'>
+      <value enum='9' description='FIX50SP2'/>
+    </field>
+    <field number='9001' name='CustomSp2Tag' type='CHAR'/>
+  </fields>
+</fix>"
+    )
+    .expect("write xml");
+
+    let logon = valid_fix_message(
+        "FIXT.1.1",
+        &[
+            ("35", "A"),
+            ("49", "BUY"),
+            ("56", "SELL"),
+            ("34", "1"),
+            ("52", "20240101-00:00:00"),
+            ("98", "0"),
+            ("108", "30"),
+            ("1137", "9"),
+        ],
+    );
+    let heartbeat = valid_fix_message(
+        "FIXT.1.1",
+        &[
+            ("35", "0"),
+            ("49", "BUY"),
+            ("56", "SELL"),
+            ("52", "20240101-00:00:01"),
+            ("9001", "SP2ONLY"),
+        ],
+    );
+
+    cargo_bin_cmd!("fixdecoder")
+        .args(["--xml", &xml.path().display().to_string(), "--validate"])
+        .write_stdin(format!("{logon}{heartbeat}"))
+        .assert()
+        .success()
+        .stdout(contains("CustomSp2Tag").and(contains("Unknown tag 9001").not()));
 }
