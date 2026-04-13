@@ -431,6 +431,7 @@ fn validate_group_entry(
     tag_errors: &mut HashMap<u32, Vec<String>>,
 ) -> (usize, Vec<String>) {
     let mut errors = Vec::new();
+    let mut seen = HashSet::new();
     let mut idx = start_idx;
     let mut last_pos = -1isize;
     while idx < fields.len() {
@@ -438,6 +439,24 @@ fn validate_group_entry(
         if tag == spec.delim && idx != start_idx {
             break;
         }
+
+        let Some(pos) = spec.entry_pos.get(&tag).copied() else {
+            break;
+        };
+        let pos = pos as isize;
+        if pos < last_pos {
+            let err = format!(
+                "Tag {} ({}) out of order within repeating group {}",
+                tag,
+                dict.field_name(tag),
+                spec.count_tag
+            );
+            errors.push(err.clone());
+            tag_errors.entry(tag).or_default().push(err);
+        }
+        last_pos = pos;
+        seen.insert(tag);
+
         if let Some(nested) = spec.nested.get(&tag) {
             let (consumed, mut errs) =
                 validate_group_instance(fields, idx, nested, msg_def, dict, tag_errors);
@@ -445,24 +464,14 @@ fn validate_group_entry(
             idx += consumed;
             continue;
         }
-        if let Some(pos) = spec.entry_order.iter().position(|t| *t == tag) {
-            if (pos as isize) < last_pos {
-                let err = format!(
-                    "Tag {} ({}) out of order within repeating group {}",
-                    tag,
-                    dict.field_name(tag),
-                    spec.count_tag
-                );
-                errors.push(err.clone());
-                tag_errors.entry(tag).or_default().push(err);
-            }
-            last_pos = pos as isize;
-            idx += 1;
-        } else {
-            // Tag does not belong to this group; stop so parent can handle it.
-            break;
-        }
+        idx += 1;
     }
+    errors.extend(validate_required_fields(
+        &spec.required_tags,
+        &seen,
+        dict,
+        tag_errors,
+    ));
     (idx - start_idx, errors)
 }
 
@@ -911,6 +920,290 @@ mod tests {
         assert!(
             errors.is_clean(),
             "component-first group entries should validate cleanly: {:?}",
+            errors.errors
+        );
+    }
+
+    #[test]
+    fn optional_group_children_are_not_required_when_group_is_absent() {
+        let dict = lookup_from_xml(
+            r#"
+<fix type='FIX' major='4' minor='4'>
+  <header>
+    <field name='BeginString' required='Y'/>
+    <field name='BodyLength' required='Y'/>
+    <field name='MsgType' required='Y'/>
+  </header>
+  <trailer>
+    <field name='CheckSum' required='Y'/>
+  </trailer>
+  <messages>
+    <message name='Test' msgtype='Z' msgcat='app'>
+      <field name='Req' required='Y'/>
+      <group name='NoThings' required='N'>
+        <field name='ThingID' required='Y'/>
+      </group>
+    </message>
+  </messages>
+  <components/>
+  <fields>
+    <field number='8' name='BeginString' type='STRING'/>
+    <field number='9' name='BodyLength' type='LENGTH'/>
+    <field number='10' name='CheckSum' type='STRING'/>
+    <field number='35' name='MsgType' type='STRING'>
+      <value enum='Z' description='Test'/>
+    </field>
+    <field number='100' name='Req' type='STRING'/>
+    <field number='200' name='NoThings' type='NUMINGROUP'/>
+    <field number='201' name='ThingID' type='STRING'/>
+  </fields>
+</fix>
+"#,
+        );
+        let msg = build_message(&[(35, "Z"), (100, "ABC")], None);
+        let errors = validate_fix_message(&msg, &dict);
+
+        assert!(
+            errors.is_clean(),
+            "absent optional groups should not require their child fields: {:?}",
+            errors.errors
+        );
+    }
+
+    #[test]
+    fn required_group_requires_count_tag_not_child_tags() {
+        let dict = lookup_from_xml(
+            r#"
+<fix type='FIX' major='4' minor='4'>
+  <header>
+    <field name='BeginString' required='Y'/>
+    <field name='BodyLength' required='Y'/>
+    <field name='MsgType' required='Y'/>
+  </header>
+  <trailer>
+    <field name='CheckSum' required='Y'/>
+  </trailer>
+  <messages>
+    <message name='Test' msgtype='Z' msgcat='app'>
+      <field name='Req' required='Y'/>
+      <group name='NoThings' required='Y'>
+        <field name='ThingID' required='Y'/>
+      </group>
+    </message>
+  </messages>
+  <components/>
+  <fields>
+    <field number='8' name='BeginString' type='STRING'/>
+    <field number='9' name='BodyLength' type='LENGTH'/>
+    <field number='10' name='CheckSum' type='STRING'/>
+    <field number='35' name='MsgType' type='STRING'>
+      <value enum='Z' description='Test'/>
+    </field>
+    <field number='100' name='Req' type='STRING'/>
+    <field number='200' name='NoThings' type='NUMINGROUP'/>
+    <field number='201' name='ThingID' type='STRING'/>
+  </fields>
+</fix>
+"#,
+        );
+        let msg = build_message(&[(35, "Z"), (100, "ABC")], None);
+        let errors = validate_fix_message(&msg, &dict);
+
+        assert!(
+            errors
+                .errors
+                .iter()
+                .any(|err| err.contains("Missing required tag 200")),
+            "required groups should require their count tag: {:?}",
+            errors.errors
+        );
+        assert!(
+            !errors
+                .errors
+                .iter()
+                .any(|err| err.contains("Missing required tag 201")),
+            "group child tags should not be treated as top-level required tags: {:?}",
+            errors.errors
+        );
+    }
+
+    #[test]
+    fn multiple_group_entries_do_not_trigger_top_level_order_errors() {
+        let dict = lookup_from_xml(
+            r#"
+<fix type='FIX' major='4' minor='4'>
+  <header>
+    <field name='BeginString' required='Y'/>
+    <field name='BodyLength' required='Y'/>
+    <field name='MsgType' required='Y'/>
+  </header>
+  <trailer>
+    <field name='CheckSum' required='Y'/>
+  </trailer>
+  <messages>
+    <message name='Test' msgtype='Z' msgcat='app'>
+      <field name='Req' required='Y'/>
+      <group name='NoThings' required='Y'>
+        <field name='ThingID' required='Y'/>
+        <field name='ThingType' required='Y'/>
+      </group>
+    </message>
+  </messages>
+  <components/>
+  <fields>
+    <field number='8' name='BeginString' type='STRING'/>
+    <field number='9' name='BodyLength' type='LENGTH'/>
+    <field number='10' name='CheckSum' type='STRING'/>
+    <field number='35' name='MsgType' type='STRING'>
+      <value enum='Z' description='Test'/>
+    </field>
+    <field number='100' name='Req' type='STRING'/>
+    <field number='200' name='NoThings' type='NUMINGROUP'/>
+    <field number='201' name='ThingID' type='STRING'/>
+    <field number='202' name='ThingType' type='STRING'/>
+  </fields>
+</fix>
+"#,
+        );
+        let msg = build_message(
+            &[
+                (35, "Z"),
+                (100, "ABC"),
+                (200, "2"),
+                (201, "ID1"),
+                (202, "TYPE1"),
+                (201, "ID2"),
+                (202, "TYPE2"),
+            ],
+            None,
+        );
+        let errors = validate_fix_message(&msg, &dict);
+
+        assert!(
+            errors.is_clean(),
+            "valid multi-entry groups should not be flagged as top-level ordering errors: {:?}",
+            errors.errors
+        );
+    }
+
+    #[test]
+    fn required_group_fields_are_validated_per_entry() {
+        let dict = lookup_from_xml(
+            r#"
+<fix type='FIX' major='4' minor='4'>
+  <header>
+    <field name='BeginString' required='Y'/>
+    <field name='BodyLength' required='Y'/>
+    <field name='MsgType' required='Y'/>
+  </header>
+  <trailer>
+    <field name='CheckSum' required='Y'/>
+  </trailer>
+  <messages>
+    <message name='Test' msgtype='Z' msgcat='app'>
+      <field name='Req' required='Y'/>
+      <group name='NoThings' required='Y'>
+        <field name='ThingID' required='Y'/>
+        <field name='ThingType' required='Y'/>
+      </group>
+    </message>
+  </messages>
+  <components/>
+  <fields>
+    <field number='8' name='BeginString' type='STRING'/>
+    <field number='9' name='BodyLength' type='LENGTH'/>
+    <field number='10' name='CheckSum' type='STRING'/>
+    <field number='35' name='MsgType' type='STRING'>
+      <value enum='Z' description='Test'/>
+    </field>
+    <field number='100' name='Req' type='STRING'/>
+    <field number='200' name='NoThings' type='NUMINGROUP'/>
+    <field number='201' name='ThingID' type='STRING'/>
+    <field number='202' name='ThingType' type='STRING'/>
+  </fields>
+</fix>
+"#,
+        );
+        let msg = build_message(
+            &[
+                (35, "Z"),
+                (100, "ABC"),
+                (200, "2"),
+                (201, "ID1"),
+                (202, "TYPE1"),
+                (201, "ID2"),
+            ],
+            None,
+        );
+        let errors = validate_fix_message(&msg, &dict);
+
+        assert!(
+            errors
+                .errors
+                .iter()
+                .any(|err| err.contains("Missing required tag 202")),
+            "each repeating-group entry should enforce its own required tags: {:?}",
+            errors.errors
+        );
+    }
+
+    #[test]
+    fn nested_group_entries_can_be_followed_by_top_level_fields() {
+        let dict = lookup_from_xml(
+            r#"
+<fix type='FIX' major='4' minor='4'>
+  <header>
+    <field name='BeginString' required='Y'/>
+    <field name='BodyLength' required='Y'/>
+    <field name='MsgType' required='Y'/>
+  </header>
+  <trailer>
+    <field name='CheckSum' required='Y'/>
+  </trailer>
+  <messages>
+    <message name='Nested' msgtype='N' msgcat='app'>
+      <group name='NoThings' required='Y'>
+        <field name='ThingID' required='Y'/>
+        <group name='NoLegs' required='Y'>
+          <field name='LegSymbol' required='Y'/>
+        </group>
+      </group>
+      <field name='Tail' required='N'/>
+    </message>
+  </messages>
+  <components/>
+  <fields>
+    <field number='8' name='BeginString' type='STRING'/>
+    <field number='9' name='BodyLength' type='LENGTH'/>
+    <field number='10' name='CheckSum' type='STRING'/>
+    <field number='35' name='MsgType' type='STRING'>
+      <value enum='N' description='Nested'/>
+    </field>
+    <field number='200' name='NoThings' type='NUMINGROUP'/>
+    <field number='201' name='ThingID' type='STRING'/>
+    <field number='300' name='NoLegs' type='NUMINGROUP'/>
+    <field number='301' name='LegSymbol' type='STRING'/>
+    <field number='400' name='Tail' type='STRING'/>
+  </fields>
+</fix>
+"#,
+        );
+        let msg = build_message(
+            &[
+                (35, "N"),
+                (200, "1"),
+                (201, "THING1"),
+                (300, "1"),
+                (301, "LEG1"),
+                (400, "TAIL"),
+            ],
+            None,
+        );
+        let errors = validate_fix_message(&msg, &dict);
+
+        assert!(
+            errors.is_clean(),
+            "nested group entries should stop cleanly before following top-level fields: {:?}",
             errors.errors
         );
     }

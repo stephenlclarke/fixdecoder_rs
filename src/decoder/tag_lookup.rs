@@ -48,9 +48,9 @@ pub struct GroupSpec {
     pub name: String,
     pub count_tag: u32,
     pub delim: u32,
-    pub entry_order: Vec<u32>,
     pub entry_pos: HashMap<u32, usize>,
     pub entry_tag_set: HashSet<u32>,
+    pub required_tags: Vec<u32>,
     pub nested: HashMap<u32, GroupSpec>,
 }
 
@@ -526,6 +526,7 @@ impl<'a> MessageDefBuilder<'a> {
             self.append_component_fields("Trailer", &mut stack, &mut order, &mut required);
         }
 
+        dedupe(&mut order);
         dedupe(&mut required);
         (order, required)
     }
@@ -551,7 +552,7 @@ impl<'a> MessageDefBuilder<'a> {
                     self.append_component_fields(&component.name, stack, order, required);
                 }
                 ContainerEntry::Group(group) => {
-                    self.append_group_fields(group, stack, order, required);
+                    self.append_group_count_tag(group, order, required);
                 }
             }
         }
@@ -576,14 +577,18 @@ impl<'a> MessageDefBuilder<'a> {
         stack.pop();
     }
 
-    fn append_group_fields(
+    fn append_group_count_tag(
         &self,
         group: &GroupDef,
-        stack: &mut Vec<String>,
         order: &mut Vec<u32>,
         required: &mut Vec<u32>,
     ) {
-        self.append_entries(&group.entries, stack, order, required);
+        if let Some(tag) = self.name_to_tag.get(&group.name) {
+            order.push(*tag);
+            if group.required.as_deref() == Some("Y") {
+                required.push(*tag);
+            }
+        }
     }
 
     fn collect_group_specs(&self, msg: &Message) -> (HashMap<u32, GroupSpec>, HashMap<u32, u32>) {
@@ -674,11 +679,19 @@ impl<'a> MessageDefBuilder<'a> {
             .first_group_entry_tag(group, &mut HashSet::new())
             .unwrap_or(count_tag);
         let mut order = Vec::new();
+        let mut required = Vec::new();
         let mut nested = HashMap::new();
 
-        self.append_entries_for_spec(&group.entries, stack, &mut order, &mut nested);
+        self.append_entries_for_spec(
+            &group.entries,
+            stack,
+            &mut order,
+            &mut required,
+            &mut nested,
+        );
 
         dedupe(&mut order);
+        dedupe(&mut required);
         let entry_tag_set: HashSet<u32> = order.iter().copied().collect();
         let entry_pos: HashMap<u32, usize> =
             order.iter().enumerate().map(|(i, t)| (*t, i)).collect();
@@ -686,9 +699,9 @@ impl<'a> MessageDefBuilder<'a> {
             name: group.name.clone(),
             count_tag,
             delim,
-            entry_order: order,
             entry_pos,
             entry_tag_set,
+            required_tags: required,
             nested,
         })
     }
@@ -698,6 +711,7 @@ impl<'a> MessageDefBuilder<'a> {
         entries: &[ContainerEntry],
         stack: &mut HashSet<String>,
         order: &mut Vec<u32>,
+        required: &mut Vec<u32>,
         nested: &mut HashMap<u32, GroupSpec>,
     ) {
         for entry in entries {
@@ -705,14 +719,26 @@ impl<'a> MessageDefBuilder<'a> {
                 ContainerEntry::Field(field) => {
                     if let Some(tag) = self.name_to_tag.get(&field.name) {
                         order.push(*tag);
+                        if field.required.as_deref() == Some("Y") {
+                            required.push(*tag);
+                        }
                     }
                 }
                 ContainerEntry::Component(component) => {
-                    self.append_component_fields_for_spec(&component.name, stack, order, nested);
+                    self.append_component_fields_for_spec(
+                        &component.name,
+                        stack,
+                        order,
+                        required,
+                        nested,
+                    );
                 }
                 ContainerEntry::Group(group) => {
                     if let Some(spec) = self.build_group_spec(group, stack) {
                         order.push(spec.count_tag);
+                        if group.required.as_deref() == Some("Y") {
+                            required.push(spec.count_tag);
+                        }
                         nested.insert(spec.count_tag, spec);
                     }
                 }
@@ -725,6 +751,7 @@ impl<'a> MessageDefBuilder<'a> {
         name: &str,
         stack: &mut HashSet<String>,
         order: &mut Vec<u32>,
+        required: &mut Vec<u32>,
         nested: &mut HashMap<u32, GroupSpec>,
     ) {
         if !stack.insert(name.to_string()) {
@@ -735,7 +762,7 @@ impl<'a> MessageDefBuilder<'a> {
             return;
         };
 
-        self.append_entries_for_spec(&component.entries, stack, order, nested);
+        self.append_entries_for_spec(&component.entries, stack, order, required, nested);
         stack.remove(name);
     }
 

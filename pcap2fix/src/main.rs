@@ -87,6 +87,7 @@ struct CaptureState {
     idb_linktypes: HashMap<u32, Linktype>,
     next_if_id: u32,
     next_packet_index: u64,
+    last_idle_sweep: Option<Instant>,
 }
 
 #[derive(Debug)]
@@ -111,8 +112,13 @@ struct BufferedFlowOutput {
     output: Vec<u8>,
 }
 
+enum ShardCommand {
+    Packet(PacketWork),
+    EvictIdle(Instant),
+}
+
 struct FlowShard {
-    sender: Sender<PacketWork>,
+    sender: Sender<ShardCommand>,
     handle: thread::JoinHandle<Vec<BufferedFlowOutput>>,
 }
 
@@ -124,6 +130,7 @@ struct FlowShardPool {
 }
 
 const FIX_BEGIN: &[u8] = b"8=FIX";
+const IDLE_SWEEP_INTERVAL: Duration = Duration::from_secs(1);
 
 enum MessageEnd {
     Complete(usize),
@@ -167,8 +174,18 @@ impl FlowShardPool {
         let shard_index = self.shard_index(work.key);
         self.shards[shard_index]
             .sender
-            .send(work)
+            .send(ShardCommand::Packet(work))
             .map_err(|_| anyhow!("flow shard worker stopped unexpectedly"))?;
+        self.drain_ready_results(out)
+    }
+
+    fn evict_idle<W: Write>(&mut self, now: Instant, out: &mut W) -> Result<()> {
+        for shard in &self.shards {
+            shard
+                .sender
+                .send(ShardCommand::EvictIdle(now))
+                .map_err(|_| anyhow!("flow shard worker stopped unexpectedly"))?;
+        }
         self.drain_ready_results(out)
     }
 
@@ -234,31 +251,39 @@ impl FlowShardPool {
 }
 
 fn run_flow_shard(
-    work_rx: Receiver<PacketWork>,
+    work_rx: Receiver<ShardCommand>,
     result_tx: Sender<PacketResult>,
     options: CaptureOptions,
 ) -> Vec<BufferedFlowOutput> {
     let mut flows = HashMap::new();
     let mut scratch = Vec::new();
 
-    while let Ok(work) = work_rx.recv() {
-        let mut output = Vec::new();
-        let warning = handle_packet_work(&work, &options, &mut flows, &mut scratch, &mut output)
-            .err()
-            .map(|err| format!("warn: skipping packet: {err}"));
+    while let Ok(command) = work_rx.recv() {
+        match command {
+            ShardCommand::Packet(work) => {
+                let mut output = Vec::new();
+                let warning =
+                    handle_packet_work(&work, &options, &mut flows, &mut scratch, &mut output)
+                        .err()
+                        .map(|err| format!("warn: skipping packet: {err}"));
 
-        if result_tx
-            .send(PacketResult {
-                index: work.index,
-                output,
-                warning,
-            })
-            .is_err()
-        {
-            break;
+                if result_tx
+                    .send(PacketResult {
+                        index: work.index,
+                        output,
+                        warning,
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+
+                evict_idle_at(&mut flows, options.idle_timeout, work.seen_at);
+            }
+            ShardCommand::EvictIdle(now) => {
+                evict_idle_at(&mut flows, options.idle_timeout, now);
+            }
         }
-
-        evict_idle_at(&mut flows, options.idle_timeout, work.seen_at);
     }
 
     flush_remaining_flow_outputs(&mut flows, options.delimiter, &mut scratch)
@@ -298,6 +323,7 @@ fn process_capture<R: PcapReaderIterator + ?Sized, W: Write>(
             Ok((offset, block)) => {
                 handle_block(block, options, state, shards, out);
                 reader.consume(offset);
+                sweep_idle_flows(state, shards, out)?;
             }
             Err(pcap_parser::PcapError::Eof) => return Ok(()),
             Err(pcap_parser::PcapError::Incomplete) => {
@@ -308,6 +334,23 @@ fn process_capture<R: PcapReaderIterator + ?Sized, W: Write>(
             Err(err) => return Err(anyhow!("pcap parse error: {err}")),
         }
     }
+}
+
+fn sweep_idle_flows<W: Write>(
+    state: &mut CaptureState,
+    shards: &mut FlowShardPool,
+    out: &mut W,
+) -> Result<()> {
+    let now = Instant::now();
+    let should_sweep = state
+        .last_idle_sweep
+        .map(|last| now.duration_since(last) >= IDLE_SWEEP_INTERVAL)
+        .unwrap_or(true);
+    if should_sweep {
+        shards.evict_idle(now, out)?;
+        state.last_idle_sweep = Some(now);
+    }
+    Ok(())
 }
 
 fn handle_block<W: Write>(
@@ -817,6 +860,10 @@ fn evict_idle_at(flows: &mut HashMap<FlowKey, FlowState>, idle: Duration, now: I
 mod tests {
     use super::*;
     use etherparse::PacketBuilder;
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
 
     fn build_fix_message(body: &str, delim: u8) -> Vec<u8> {
         let mut msg = Vec::new();
@@ -1117,6 +1164,129 @@ mod tests {
 
         assert_eq!(flows.len(), 1);
         assert!(flows.keys().any(|flow| flow.sport == 5002));
+    }
+
+    #[test]
+    fn flow_shard_evicts_stale_partial_flows_on_idle_command() {
+        let (command_tx, command_rx) = mpsc::channel();
+        let (result_tx, result_rx) = mpsc::channel();
+        let options = CaptureOptions {
+            port_filter: None,
+            delimiter: b'|',
+            max_flow_bytes: 1024,
+            idle_timeout: Duration::from_secs(60),
+        };
+        let handle = thread::spawn(move || run_flow_shard(command_rx, result_tx, options));
+        let message = build_fix_message("35=0|49=AAA|", b'|');
+        let partial = message[..10].to_vec();
+        let stale_seen_at = Instant::now() - Duration::from_secs(120);
+
+        command_tx
+            .send(ShardCommand::Packet(PacketWork {
+                index: 0,
+                seen_at: stale_seen_at,
+                key: FlowKey {
+                    src: "10.0.0.1".parse().unwrap(),
+                    dst: "10.0.0.2".parse().unwrap(),
+                    sport: 5000,
+                    dport: 5001,
+                },
+                seq: 1,
+                payload: partial,
+            }))
+            .unwrap();
+        let packet_result = result_rx.recv().unwrap();
+        assert!(packet_result.output.is_empty());
+
+        command_tx
+            .send(ShardCommand::EvictIdle(Instant::now()))
+            .unwrap();
+        drop(command_tx);
+
+        let buffered = handle.join().unwrap();
+        assert!(
+            buffered.is_empty(),
+            "explicit idle sweeps should drop stale partial flows before final flush"
+        );
+    }
+
+    #[test]
+    fn sweep_idle_flows_dispatches_at_most_once_per_interval() {
+        let (command_tx, command_rx) = mpsc::channel();
+        let (result_tx, result_rx) = mpsc::channel();
+        drop(result_tx);
+        let evictions = Arc::new(AtomicUsize::new(0));
+        let thread_evictions = Arc::clone(&evictions);
+        let handle = thread::spawn(move || {
+            while let Ok(command) = command_rx.recv() {
+                if matches!(command, ShardCommand::EvictIdle(_)) {
+                    thread_evictions.fetch_add(1, Ordering::SeqCst);
+                }
+            }
+            Vec::new()
+        });
+        let mut pool = FlowShardPool {
+            shards: vec![FlowShard {
+                sender: command_tx,
+                handle,
+            }],
+            results: result_rx,
+            pending: BTreeMap::new(),
+            next_output_index: 0,
+        };
+        let mut state = CaptureState::default();
+        let mut out = Vec::new();
+
+        sweep_idle_flows(&mut state, &mut pool, &mut out).unwrap();
+        let first_sweep = state
+            .last_idle_sweep
+            .expect("first idle sweep should record a timestamp");
+        sweep_idle_flows(&mut state, &mut pool, &mut out).unwrap();
+        assert_eq!(
+            state.last_idle_sweep,
+            Some(first_sweep),
+            "repeated idle sweeps inside the throttle interval should be skipped"
+        );
+
+        pool.finish(&mut out).unwrap();
+        assert_eq!(evictions.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn flow_shard_exits_when_result_channel_is_closed() {
+        let (command_tx, command_rx) = mpsc::channel();
+        let (result_tx, result_rx) = mpsc::channel();
+        drop(result_rx);
+        let options = CaptureOptions {
+            port_filter: None,
+            delimiter: b'|',
+            max_flow_bytes: 1024,
+            idle_timeout: Duration::from_secs(60),
+        };
+        let handle = thread::spawn(move || run_flow_shard(command_rx, result_tx, options));
+        let message = build_fix_message("35=0|49=AAA|", b'|');
+
+        command_tx
+            .send(ShardCommand::Packet(PacketWork {
+                index: 0,
+                seen_at: Instant::now(),
+                key: FlowKey {
+                    src: "10.0.0.1".parse().unwrap(),
+                    dst: "10.0.0.2".parse().unwrap(),
+                    sport: 5000,
+                    dport: 5001,
+                },
+                seq: 1,
+                payload: message[..10].to_vec(),
+            }))
+            .unwrap();
+        drop(command_tx);
+
+        let buffered = handle.join().unwrap();
+        assert!(
+            buffered.is_empty(),
+            "worker shutdown on a closed result channel should not flush stale partial output"
+        );
     }
 
     #[test]
