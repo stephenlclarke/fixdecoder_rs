@@ -15,6 +15,7 @@ use crate::decoder::tag_lookup::{
 use crate::decoder::validator;
 use crate::fix;
 use once_cell::sync::Lazy;
+use rayon::prelude::*;
 use regex::Regex;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
@@ -78,6 +79,59 @@ pub struct PrettifyContext<'a> {
     pub fixt_session_defaults: HashMap<FixtSessionKey, String>,
     pub counts_dirty: bool,
     pub interrupted: &'static AtomicBool,
+}
+
+#[derive(Clone)]
+struct FileProcessorConfig {
+    obfuscation_enabled: bool,
+    display_delimiter: char,
+    style: OutputStyle,
+    wide_grid: bool,
+    fix_override: Option<String>,
+    validation_enabled: bool,
+    live_status_enabled: bool,
+}
+
+impl FileProcessorConfig {
+    fn from_context(ctx: &PrettifyContext<'_>) -> Self {
+        Self {
+            obfuscation_enabled: ctx.obfuscator.is_enabled(),
+            display_delimiter: ctx.display_delimiter,
+            style: ctx.style,
+            wide_grid: ctx.wide_grid,
+            fix_override: ctx.fix_override.map(str::to_string),
+            validation_enabled: ctx.validation_enabled,
+            live_status_enabled: ctx.live_status_enabled,
+        }
+    }
+}
+
+#[derive(Default)]
+struct ProcessedFile {
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+    message_counts: HashMap<String, MsgTypeCount>,
+    counts_dirty: bool,
+    status: i32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FileProcessingMode {
+    Sequential,
+    Parallel,
+}
+
+impl FileProcessingMode {
+    fn select(sources: &[String], ctx: &PrettifyContext<'_>) -> Self {
+        if ctx.follow
+            || ctx.summary.is_some()
+            || sources.len() < 2
+            || sources.iter().any(|path| path == "-")
+        {
+            return Self::Sequential;
+        }
+        Self::Parallel
+    }
 }
 
 #[derive(Default, Clone)]
@@ -498,23 +552,16 @@ fn append_trailer_tags(
 }
 
 pub fn prettify_files(paths: &[String], ctx: &mut PrettifyContext) -> i32 {
-    let mut had_error = false;
     let sources = if paths.is_empty() {
         vec!["-".to_string()]
     } else {
         paths.to_vec()
     };
 
-    for path in sources {
-        let res = if path == "-" {
-            handle_stdin(ctx)
-        } else {
-            handle_file(&path, ctx).map(|_| 0).unwrap_or(1)
-        };
-        if res != 0 {
-            had_error = true;
-        }
-    }
+    let had_error = match FileProcessingMode::select(&sources, ctx) {
+        FileProcessingMode::Sequential => process_sources_sequential(&sources, ctx),
+        FileProcessingMode::Parallel => process_sources_in_parallel(&sources, ctx),
+    };
 
     if let Some(ref mut tracker) = ctx.summary.as_mut() {
         tracker.render(ctx.out).ok();
@@ -522,6 +569,102 @@ pub fn prettify_files(paths: &[String], ctx: &mut PrettifyContext) -> i32 {
     let _ = print_message_counts(ctx);
 
     if had_error { 1 } else { 0 }
+}
+
+fn process_sources_sequential(sources: &[String], ctx: &mut PrettifyContext) -> bool {
+    let mut had_error = false;
+
+    for path in sources {
+        let res = if path == "-" {
+            handle_stdin(ctx)
+        } else {
+            handle_file(path, ctx).map(|_| 0).unwrap_or(1)
+        };
+        if res != 0 {
+            had_error = true;
+        }
+    }
+
+    had_error
+}
+
+fn process_sources_in_parallel(sources: &[String], ctx: &mut PrettifyContext) -> bool {
+    let config = FileProcessorConfig::from_context(ctx);
+    let results: Vec<ProcessedFile> = sources
+        .par_iter()
+        .map(|path| process_file_in_parallel(path, &config))
+        .collect();
+
+    let mut had_error = false;
+    for result in results {
+        if ctx.out.write_all(&result.stdout).is_err() {
+            had_error = true;
+        }
+        if ctx.err_out.write_all(&result.stderr).is_err() {
+            had_error = true;
+        }
+        merge_message_counts(&mut ctx.message_counts, result.message_counts);
+        ctx.counts_dirty |= result.counts_dirty;
+        if result.status != 0 {
+            had_error = true;
+        }
+    }
+
+    had_error
+}
+
+fn process_file_in_parallel(path: &str, config: &FileProcessorConfig) -> ProcessedFile {
+    let obfuscator = fix::create_obfuscator(config.obfuscation_enabled);
+    let mut out = Vec::new();
+    let mut err = Vec::new();
+    let mut summary = None;
+    let (message_counts, counts_dirty, status) = {
+        let mut ctx = PrettifyContext {
+            out: &mut out,
+            err_out: &mut err,
+            obfuscator: &obfuscator,
+            display_delimiter: config.display_delimiter,
+            style: config.style,
+            wide_grid: config.wide_grid,
+            summary: &mut summary,
+            fix_override: config.fix_override.as_deref(),
+            follow: false,
+            live_status_enabled: config.live_status_enabled,
+            validation_enabled: config.validation_enabled,
+            message_counts: HashMap::new(),
+            fixt_session_defaults: HashMap::new(),
+            counts_dirty: false,
+            interrupted: interrupt_flag(),
+        };
+
+        let status = handle_file(path, &mut ctx).map(|_| 0).unwrap_or(1);
+        (
+            std::mem::take(&mut ctx.message_counts),
+            ctx.counts_dirty,
+            status,
+        )
+    };
+
+    ProcessedFile {
+        stdout: out,
+        stderr: err,
+        message_counts,
+        counts_dirty,
+        status,
+    }
+}
+
+fn merge_message_counts(
+    target: &mut HashMap<String, MsgTypeCount>,
+    source: HashMap<String, MsgTypeCount>,
+) {
+    for (msg_type, info) in source {
+        let entry = target.entry(msg_type).or_default();
+        entry.count += info.count;
+        if entry.label.is_none() {
+            entry.label = info.label;
+        }
+    }
 }
 
 pub fn print_message_counts(ctx: &mut PrettifyContext) -> io::Result<()> {
@@ -1147,14 +1290,14 @@ fn test_lookup_with_order(field_order: Vec<u32>) -> FixTagLookup {
     let mut messages = HashMap::new();
     messages.insert(
         "X".to_string(),
-        MessageDef {
-            _name: "X".to_string(),
-            _msg_type: "X".to_string(),
+        MessageDef::new_for_tests(
+            "X",
+            "X",
             field_order,
-            required: Vec::new(),
-            groups: HashMap::new(),
-            group_membership: HashMap::new(),
-        },
+            Vec::new(),
+            HashMap::new(),
+            HashMap::new(),
+        ),
     );
     FixTagLookup::new_for_tests(messages)
 }
@@ -1409,6 +1552,74 @@ mod tests {
     }
 
     #[test]
+    fn prettify_files_preserves_input_order_when_parallelised() {
+        let _lock = TEST_GUARD.lock().unwrap();
+        interrupt_flag().store(false, Ordering::Relaxed);
+        let obfuscator = fix::create_obfuscator(false);
+        let msg = valid_heartbeat_message();
+
+        let mut first = NamedTempFile::new().expect("first temp file");
+        std::io::Write::write_all(&mut first, msg.as_bytes()).expect("write first temp file");
+        let mut second = NamedTempFile::new().expect("second temp file");
+        std::io::Write::write_all(&mut second, msg.as_bytes()).expect("write second temp file");
+
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let mut summary = None;
+        let paths = vec![
+            first.path().display().to_string(),
+            second.path().display().to_string(),
+        ];
+        let (status, heartbeat_count) = {
+            let mut ctx = PrettifyContext {
+                out: &mut out,
+                err_out: &mut err,
+                obfuscator: &obfuscator,
+                display_delimiter: '|',
+                style: OutputStyle {
+                    show_numbers: false,
+                    show_header: true,
+                    show_grid: false,
+                },
+                wide_grid: false,
+                summary: &mut summary,
+                fix_override: None,
+                follow: false,
+                live_status_enabled: true,
+                validation_enabled: false,
+                message_counts: HashMap::new(),
+                fixt_session_defaults: HashMap::new(),
+                counts_dirty: false,
+                interrupted: interrupt_flag(),
+            };
+
+            let status = prettify_files(&paths, &mut ctx);
+            let heartbeat_count = ctx.message_counts.get("0").map(|count| count.count);
+            (status, heartbeat_count)
+        };
+
+        assert_eq!(status, 0);
+        assert!(err.is_empty(), "unexpected stderr output: {:?}", err);
+        assert_eq!(
+            heartbeat_count,
+            Some(2),
+            "message counts should be merged across files"
+        );
+
+        let output = String::from_utf8(out).unwrap();
+        let first_pos = output
+            .find(&first.path().display().to_string())
+            .expect("first file header present");
+        let second_pos = output
+            .find(&second.path().display().to_string())
+            .expect("second file header present");
+        assert!(
+            first_pos < second_pos,
+            "parallel file processing must preserve argv order: {output}"
+        );
+    }
+
+    #[test]
     fn validation_inserts_missing_tags() {
         let _lock = TEST_GUARD.lock().unwrap();
         disable_output_colours();
@@ -1478,14 +1689,14 @@ mod tests {
         let mut messages = HashMap::new();
         messages.insert(
             "X".to_string(),
-            MessageDef {
-                _name: "X".to_string(),
-                _msg_type: "X".to_string(),
-                field_order: vec![8, 9, 35, 55],
-                required: Vec::new(),
-                groups: HashMap::new(),
-                group_membership: HashMap::new(),
-            },
+            MessageDef::new_for_tests(
+                "X",
+                "X",
+                vec![8, 9, 35, 55],
+                Vec::new(),
+                HashMap::new(),
+                HashMap::new(),
+            ),
         );
         let dict = FixTagLookup::new_for_tests(messages);
         let fields = vec![
@@ -1717,5 +1928,25 @@ mod tests {
             }
         }
         out
+    }
+
+    fn valid_heartbeat_message() -> String {
+        let lookup = load_dictionary(&format!("8=FIX.4.4{SOH}35=0{SOH}10=000{SOH}"));
+        let order = lookup
+            .message_def("0")
+            .expect("heartbeat definition")
+            .field_order
+            .clone();
+        let mut values = HashMap::new();
+        values.insert(35u32, "0");
+        values.insert(34u32, "1");
+        values.insert(49u32, "AAA");
+        values.insert(52u32, "20240101-00:00:00");
+        values.insert(56u32, "BBB");
+
+        let body = build_body_from_order(&order, &values);
+        let msg_without_checksum = format!("8=FIX.4.4{SOH}9={:03}{SOH}{}", body.len(), body);
+        let checksum = validator::calculate_checksum(&format!("{msg_without_checksum}10=000{SOH}"));
+        format!("{msg_without_checksum}10={checksum:03}{SOH}\n")
     }
 }

@@ -24,18 +24,21 @@ impl ValidationReport {
 /// returning a list of human-readable errors (or empty when valid).
 pub fn validate_fix_message(msg: &str, dict: &FixTagLookup) -> ValidationReport {
     let fields = parse_fix(msg);
-    let (field_map, seen_tags, duplicates) = build_field_map(&fields, dict);
+    let (field_map, seen_tags) = build_field_map(&fields);
     let mut errors = Vec::new();
     let mut tag_errors: HashMap<u32, Vec<String>> = HashMap::new();
 
-    for dup in duplicates {
-        let err = format!("Duplicate tag {} encountered", dup);
-        errors.push(err.clone());
-        tag_errors.entry(dup).or_default().push(err);
-    }
-
     let (msg_type_errs, msg_def_opt) = validate_msg_type(&field_map, dict, &mut tag_errors);
     errors.extend(msg_type_errs);
+    if let Some(msg_def) = msg_def_opt {
+        errors.extend(validate_duplicate_fields(&fields, msg_def, &mut tag_errors));
+    } else {
+        errors.extend(validate_duplicate_fields_without_message(
+            &fields,
+            dict,
+            &mut tag_errors,
+        ));
+    }
     errors.extend(validate_body_length(msg, &field_map, &mut tag_errors));
     errors.extend(validate_field_enums_and_types(
         &fields,
@@ -67,20 +70,139 @@ pub fn validate_fix_message(msg: &str, dict: &FixTagLookup) -> ValidationReport 
     ValidationReport { errors, tag_errors }
 }
 
-fn build_field_map(
-    fields: &[FieldValue],
-    dict: &FixTagLookup,
-) -> (HashMap<u32, String>, HashSet<u32>, Vec<u32>) {
+fn build_field_map(fields: &[FieldValue]) -> (HashMap<u32, String>, HashSet<u32>) {
     let mut field_map = HashMap::new();
     let mut seen = HashSet::new();
-    let mut duplicates = Vec::new();
     for field in fields {
-        if !seen.insert(field.tag) && !dict.is_repeatable(field.tag) {
-            duplicates.push(field.tag);
-        }
+        seen.insert(field.tag);
         field_map.insert(field.tag, field.value.clone());
     }
-    (field_map, seen, duplicates)
+    (field_map, seen)
+}
+
+fn validate_duplicate_fields_without_message(
+    fields: &[FieldValue],
+    dict: &FixTagLookup,
+    tag_errors: &mut HashMap<u32, Vec<String>>,
+) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut errors = Vec::new();
+
+    for field in fields {
+        if !seen.insert(field.tag) && !dict.is_repeatable(field.tag) {
+            push_duplicate_error(field.tag, &mut errors, tag_errors);
+        }
+    }
+
+    errors
+}
+
+fn validate_duplicate_fields(
+    fields: &[FieldValue],
+    msg_def: &MessageDef,
+    tag_errors: &mut HashMap<u32, Vec<String>>,
+) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut errors = Vec::new();
+    let mut idx = 0;
+
+    while idx < fields.len() {
+        let tag = fields[idx].tag;
+        if !seen.insert(tag) {
+            push_duplicate_error(tag, &mut errors, tag_errors);
+        }
+
+        if let Some(spec) = msg_def.groups.get(&tag) {
+            let (consumed, mut group_errors) =
+                collect_group_duplicate_errors(fields, idx, spec, tag_errors);
+            errors.append(&mut group_errors);
+            idx += consumed.max(1);
+        } else {
+            idx += 1;
+        }
+    }
+
+    errors
+}
+
+fn collect_group_duplicate_errors(
+    fields: &[FieldValue],
+    start_idx: usize,
+    spec: &MessageDefGroupSpec,
+    tag_errors: &mut HashMap<u32, Vec<String>>,
+) -> (usize, Vec<String>) {
+    let count = fields[start_idx].value.parse::<usize>().unwrap_or_default();
+    let mut errors = Vec::new();
+    let mut entries = 0usize;
+    let mut idx = start_idx + 1;
+
+    while idx < fields.len() && entries < count {
+        let tag = fields[idx].tag;
+        let belongs_to_entry = tag == spec.delim
+            || spec.entry_tag_set.contains(&tag)
+            || spec.nested.contains_key(&tag);
+        if !belongs_to_entry {
+            break;
+        }
+
+        let (consumed, mut entry_errors) =
+            collect_group_entry_duplicate_errors(fields, idx, spec, tag_errors);
+        errors.append(&mut entry_errors);
+        idx += consumed.max(1);
+        entries += 1;
+    }
+
+    (idx - start_idx, errors)
+}
+
+fn collect_group_entry_duplicate_errors(
+    fields: &[FieldValue],
+    start_idx: usize,
+    spec: &MessageDefGroupSpec,
+    tag_errors: &mut HashMap<u32, Vec<String>>,
+) -> (usize, Vec<String>) {
+    let mut seen = HashSet::new();
+    let mut errors = Vec::new();
+    let mut idx = start_idx;
+
+    while idx < fields.len() {
+        let tag = fields[idx].tag;
+        if tag == spec.delim && idx != start_idx {
+            break;
+        }
+
+        if let Some(nested) = spec.nested.get(&tag) {
+            if !seen.insert(tag) {
+                push_duplicate_error(tag, &mut errors, tag_errors);
+            }
+            let (consumed, mut nested_errors) =
+                collect_group_duplicate_errors(fields, idx, nested, tag_errors);
+            errors.append(&mut nested_errors);
+            idx += consumed.max(1);
+            continue;
+        }
+
+        if !spec.entry_tag_set.contains(&tag) {
+            break;
+        }
+
+        if !seen.insert(tag) {
+            push_duplicate_error(tag, &mut errors, tag_errors);
+        }
+        idx += 1;
+    }
+
+    (idx - start_idx, errors)
+}
+
+fn push_duplicate_error(
+    tag: u32,
+    errors: &mut Vec<String>,
+    tag_errors: &mut HashMap<u32, Vec<String>>,
+) {
+    let err = format!("Duplicate tag {} encountered", tag);
+    errors.push(err.clone());
+    tag_errors.entry(tag).or_default().push(err);
 }
 
 fn validate_msg_type<'a>(
@@ -558,8 +680,56 @@ mod tests {
                         ],
                         groups: Vec::new(),
                         components: Vec::new(),
+                        entries: vec![
+                            crate::decoder::schema::ContainerEntry::Field(FieldRef {
+                                name: "ItemValue".to_string(),
+                                required: Some("N".to_string()),
+                            }),
+                            crate::decoder::schema::ContainerEntry::Field(FieldRef {
+                                name: "ItemCode".to_string(),
+                                required: Some("N".to_string()),
+                            }),
+                            crate::decoder::schema::ContainerEntry::Field(FieldRef {
+                                name: "ItemExtra".to_string(),
+                                required: Some("N".to_string()),
+                            }),
+                        ],
                     }],
                     components: Vec::new(),
+                    entries: vec![crate::decoder::schema::ContainerEntry::Group(GroupDef {
+                        name: "NoItems".to_string(),
+                        required: Some("Y".to_string()),
+                        fields: vec![
+                            FieldRef {
+                                name: "ItemValue".to_string(),
+                                required: Some("N".to_string()),
+                            },
+                            FieldRef {
+                                name: "ItemCode".to_string(),
+                                required: Some("N".to_string()),
+                            },
+                            FieldRef {
+                                name: "ItemExtra".to_string(),
+                                required: Some("N".to_string()),
+                            },
+                        ],
+                        groups: Vec::new(),
+                        components: Vec::new(),
+                        entries: vec![
+                            crate::decoder::schema::ContainerEntry::Field(FieldRef {
+                                name: "ItemValue".to_string(),
+                                required: Some("N".to_string()),
+                            }),
+                            crate::decoder::schema::ContainerEntry::Field(FieldRef {
+                                name: "ItemCode".to_string(),
+                                required: Some("N".to_string()),
+                            }),
+                            crate::decoder::schema::ContainerEntry::Field(FieldRef {
+                                name: "ItemExtra".to_string(),
+                                required: Some("N".to_string()),
+                            }),
+                        ],
+                    })],
                 }],
             },
             components: ComponentContainer { items: Vec::new() },
@@ -581,6 +751,20 @@ mod tests {
                 ],
                 groups: Vec::new(),
                 components: Vec::new(),
+                entries: vec![
+                    crate::decoder::schema::ContainerEntry::Field(FieldRef {
+                        name: "BeginString".to_string(),
+                        required: Some("Y".to_string()),
+                    }),
+                    crate::decoder::schema::ContainerEntry::Field(FieldRef {
+                        name: "BodyLength".to_string(),
+                        required: Some("Y".to_string()),
+                    }),
+                    crate::decoder::schema::ContainerEntry::Field(FieldRef {
+                        name: "MsgType".to_string(),
+                        required: Some("Y".to_string()),
+                    }),
+                ],
             },
             trailer: ComponentDef {
                 name: String::new(),
@@ -590,6 +774,10 @@ mod tests {
                 }],
                 groups: Vec::new(),
                 components: Vec::new(),
+                entries: vec![crate::decoder::schema::ContainerEntry::Field(FieldRef {
+                    name: "CheckSum".to_string(),
+                    required: Some("Y".to_string()),
+                })],
             },
         };
 
@@ -608,6 +796,11 @@ mod tests {
         msg
     }
 
+    fn lookup_from_xml(xml: &str) -> FixTagLookup {
+        let dict = FixDictionary::from_xml(xml).expect("test dictionary parses");
+        FixTagLookup::from_dictionary(&dict, "TEST")
+    }
+
     #[test]
     fn allows_repeating_group_tags() {
         let dict = test_lookup();
@@ -619,6 +812,105 @@ mod tests {
         assert!(
             errors.is_clean(),
             "expected no errors for valid repeating group message: {:?}",
+            errors.errors
+        );
+    }
+
+    #[test]
+    fn detects_duplicate_top_level_tag_even_if_repeatable_elsewhere() {
+        let dict = lookup_from_xml(
+            r#"
+<fix type='FIX' major='4' minor='4'>
+  <header>
+    <field name='BeginString' required='Y'/>
+    <field name='BodyLength' required='Y'/>
+    <field name='MsgType' required='Y'/>
+  </header>
+  <trailer>
+    <field name='CheckSum' required='Y'/>
+  </trailer>
+  <messages>
+    <message name='Plain' msgtype='P' msgcat='app'>
+      <field name='SharedField' required='N'/>
+    </message>
+    <message name='Grouped' msgtype='G' msgcat='app'>
+      <group name='NoShared'>
+        <field name='SharedField' required='N'/>
+      </group>
+    </message>
+  </messages>
+  <components/>
+  <fields>
+    <field number='8' name='BeginString' type='STRING'/>
+    <field number='9' name='BodyLength' type='LENGTH'/>
+    <field number='10' name='CheckSum' type='STRING'/>
+    <field number='35' name='MsgType' type='STRING'>
+      <value enum='P' description='Plain'/>
+      <value enum='G' description='Grouped'/>
+    </field>
+    <field number='1000' name='NoShared' type='NUMINGROUP'/>
+    <field number='1001' name='SharedField' type='STRING'/>
+  </fields>
+</fix>
+"#,
+        );
+        let msg = build_message(&[(35, "P"), (1001, "ALPHA"), (1001, "BETA")], None);
+        let errors = validate_fix_message(&msg, &dict);
+
+        assert!(
+            errors
+                .errors
+                .iter()
+                .any(|err| err.contains("Duplicate tag 1001 encountered")),
+            "expected duplicate top-level tag to be rejected: {:?}",
+            errors.errors
+        );
+    }
+
+    #[test]
+    fn allows_component_first_group_entries() {
+        let dict = lookup_from_xml(
+            r#"
+<fix type='FIX' major='4' minor='4'>
+  <header>
+    <field name='BeginString' required='Y'/>
+    <field name='BodyLength' required='Y'/>
+    <field name='MsgType' required='Y'/>
+  </header>
+  <trailer>
+    <field name='CheckSum' required='Y'/>
+  </trailer>
+  <messages>
+    <message name='LeggedOrder' msgtype='L' msgcat='app'>
+      <group name='NoLegs'>
+        <component name='InstrumentLeg'/>
+      </group>
+    </message>
+  </messages>
+  <components>
+    <component name='InstrumentLeg'>
+      <field name='LegSymbol' required='Y'/>
+    </component>
+  </components>
+  <fields>
+    <field number='8' name='BeginString' type='STRING'/>
+    <field number='9' name='BodyLength' type='LENGTH'/>
+    <field number='10' name='CheckSum' type='STRING'/>
+    <field number='35' name='MsgType' type='STRING'>
+      <value enum='L' description='LeggedOrder'/>
+    </field>
+    <field number='555' name='NoLegs' type='NUMINGROUP'/>
+    <field number='600' name='LegSymbol' type='STRING'/>
+  </fields>
+</fix>
+"#,
+        );
+        let msg = build_message(&[(35, "L"), (555, "1"), (600, "IBM")], None);
+        let errors = validate_fix_message(&msg, &dict);
+
+        assert!(
+            errors.is_clean(),
+            "component-first group entries should validate cleanly: {:?}",
             errors.errors
         );
     }

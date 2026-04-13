@@ -24,6 +24,11 @@ fn valid_fix_message(begin_string: &str, fields: &[(&str, &str)]) -> String {
     msg
 }
 
+fn run_fixdecoder(args: &[&str]) -> String {
+    let assert = cargo_bin_cmd!("fixdecoder").args(args).assert().success();
+    String::from_utf8_lossy(&assert.get_output().stdout).into_owned()
+}
+
 #[test]
 fn decodes_single_message_from_stdin() {
     let msg = fix_message("35=0");
@@ -233,6 +238,18 @@ fn info_flag_marks_fix27_and_fix30_as_fix40_aliases() {
         .assert()
         .success()
         .stdout(contains("FIX27").and(contains("built-in alias of FIX40")));
+}
+
+#[test]
+fn query_commands_normalise_fix_key_variants() {
+    let fix40 = run_fixdecoder(&["--fix=40", "--message"]);
+    let fix40_prefixed = run_fixdecoder(&["--fix=FIX40", "--message"]);
+    let fix40_dotted = run_fixdecoder(&["--fix=4.0", "--message"]);
+    let fix27_alias = run_fixdecoder(&["--fix=27", "--message"]);
+
+    assert_eq!(fix40_prefixed, fix40);
+    assert_eq!(fix40_dotted, fix40);
+    assert_eq!(fix27_alias, fix40);
 }
 
 #[test]

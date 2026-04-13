@@ -46,7 +46,7 @@ I have written utilities like this in past in Java, Python, C, C++, [go](https:/
 
 ## What is it
 
-fixdecoder is a FIX-aware “tail-like” tool and dictionary explorer. It reads from stdin or multiple log files, detects and prettifies FIX messages in stream, and fits naturally into pipelines. Each highlighted message is followed by a detailed tag breakdown using the correct dictionary for BeginString (8) or, for `FIXT.1.1` sessions, the negotiated application version from `ApplVerID`/`DefaultApplVerID` (`1128`/`1137`) carried on the session. It can validate on the fly (`--validate`), reporting protocol issues as it decodes, and track order state with summaries (`--summary`). For lookups, `--info` shows available/overridden dictionaries, and `--message`, `--component`, or `--tag` inspect definitions in the selected FIX version (`--fix` or default) without a live decode.
+fixdecoder is a FIX-aware “tail-like” tool and dictionary explorer. It reads from stdin or multiple log files, detects and prettifies FIX messages in stream, and fits naturally into pipelines. Each highlighted message is followed by a detailed tag breakdown using the correct dictionary for BeginString (8) or, for `FIXT.1.1` sessions, the negotiated application version from `ApplVerID`/`DefaultApplVerID` (`1128`/`1137`) carried on the session. It can validate on the fly (`--validate`), reporting protocol issues as it decodes, and track order state with summaries (`--summary`). In offline multi-file mode, independent files are processed concurrently and emitted in argv order. For lookups, `--info` shows available/overridden dictionaries, and `--message`, `--component`, or `--tag` inspect definitions in the selected FIX version (`--fix` or default) without a live decode.
 
 ## Quick start
 
@@ -107,7 +107,7 @@ Browse fields. With no value, list all tags (or use `--column`). With a tag numb
 
 ### `--validate`
 
-Validate each decoded FIX message against the active dictionary (honours `--fix` and any `--xml` overrides). Checks MsgType, BodyLength, checksum, required fields, enum/type correctness, field ordering, repeating-group structure, and duplicate disallowed tags. Validation runs alongside prettified output; any errors are appended after the message. It doesn’t stop the stream—use it to flag protocol issues while decoding
+Validate each decoded FIX message against the active dictionary (honours `--fix` and any `--xml` overrides). Checks MsgType, BodyLength, checksum, required fields, enum/type correctness, field ordering, repeating-group structure, and duplicate disallowed tags. In validation mode, clean messages are suppressed and only invalid messages are rendered with inline/matching error annotations. It doesn’t stop the stream, so it’s useful for scanning large logs for protocol issues without flooding the output with clean traffic.
 
 ### `--secret`
 

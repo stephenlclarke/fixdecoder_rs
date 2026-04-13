@@ -49,6 +49,10 @@ impl Obfuscator {
         self.obfuscate_line(line)
     }
 
+    pub fn is_enabled(&self) -> bool {
+        self.enabled
+    }
+
     /// Clear all cached aliases to start a new obfuscation session (e.g. per file).
     pub fn reset(&self) {
         if !self.enabled {

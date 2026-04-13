@@ -1121,12 +1121,6 @@ fn load_custom_dictionaries(paths: &[String]) -> Result<HashMap<String, CustomDi
     Ok(dicts)
 }
 
-/// Load an embedded FIX dictionary by version string (e.g. "44").
-fn load_embedded_dictionary(fix_version: &str) -> Result<FixDictionary> {
-    let xml_data = fix::choose_embedded_xml(fix_version);
-    FixDictionary::from_xml(xml_data).with_context(|| "failed to parse FIX XML")
-}
-
 /// Load an embedded FIX dictionary by canonical key (e.g. "FIX44").
 fn load_embedded_dictionary_for_key(key: &str) -> Result<FixDictionary> {
     let xml_id = key_to_xml_id(key).ok_or_else(|| anyhow!("no embedded dictionary for {key}"))?;
@@ -1171,18 +1165,15 @@ fn load_schema(
     opts: &CliOptions,
     custom_dicts: &HashMap<String, CustomDictionary>,
 ) -> Result<SchemaTree> {
-    let normalized_key = normalise_fix_key(&opts.fix_version);
+    let selected_key = selected_fix_key(opts);
 
-    let mut dict = if let Some(ref key) = normalized_key
-        && let Some(custom) = custom_dicts.get(key)
-    {
+    let mut dict = if let Some(custom) = custom_dicts.get(&selected_key) {
         custom.dict.clone()
     } else {
-        load_embedded_dictionary(&opts.fix_version)?
+        load_embedded_dictionary_for_key(&selected_key)?
     };
 
-    let dict_key = dictionary_key(&dict);
-    ensure_session_components(&dict_key, &mut dict);
+    ensure_session_components(&selected_key, &mut dict);
 
     Ok(SchemaTree::build(dict))
 }
@@ -1212,23 +1203,8 @@ fn run_handlers(
 ) -> Result<bool> {
     let mut handled = false;
 
-    if opts.info {
-        handle_info(opts, schema, custom_dicts)?;
-        handled = true;
-    }
-
-    if opts.message_flag {
-        handle_messages(opts, schema)?;
-        handled = true;
-    }
-
-    if opts.tag_flag {
-        handle_tags(opts, schema)?;
-        handled = true;
-    }
-
-    if opts.component_flag {
-        handle_components(opts, schema)?;
+    for command in SchemaCommand::requested(opts) {
+        command.run(opts, schema, custom_dicts)?;
         handled = true;
     }
 
@@ -1294,6 +1270,10 @@ fn normalise_fix_key(raw: &str) -> Option<String> {
     } else {
         Some(format!("FIX{}", cleaned))
     }
+}
+
+fn selected_fix_key(opts: &CliOptions) -> String {
+    normalise_fix_key(&opts.fix_version).unwrap_or_else(|| "FIX44".to_string())
 }
 
 /// Derive the canonical dictionary key (e.g. FIX40SP1) from a parsed dictionary.
@@ -1473,9 +1453,50 @@ fn handle_info(
     _schema: &SchemaTree,
     custom_dicts: &HashMap<String, CustomDictionary>,
 ) -> Result<()> {
-    let selected_key = normalise_fix_key(&opts.fix_version).unwrap_or_else(|| "FIX44".to_string());
+    let selected_key = selected_fix_key(opts);
     print_all_dictionary_info(custom_dicts, Some(&selected_key))?;
     Ok(())
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SchemaCommand {
+    Info,
+    Messages,
+    Tags,
+    Components,
+}
+
+impl SchemaCommand {
+    fn requested(opts: &CliOptions) -> Vec<Self> {
+        let mut commands = Vec::new();
+        if opts.info {
+            commands.push(Self::Info);
+        }
+        if opts.message_flag {
+            commands.push(Self::Messages);
+        }
+        if opts.tag_flag {
+            commands.push(Self::Tags);
+        }
+        if opts.component_flag {
+            commands.push(Self::Components);
+        }
+        commands
+    }
+
+    fn run(
+        self,
+        opts: &CliOptions,
+        schema: &SchemaTree,
+        custom_dicts: &HashMap<String, CustomDictionary>,
+    ) -> Result<()> {
+        match self {
+            Self::Info => handle_info(opts, schema, custom_dicts),
+            Self::Messages => handle_messages(opts, schema),
+            Self::Tags => handle_tags(opts, schema),
+            Self::Components => handle_components(opts, schema),
+        }
+    }
 }
 
 /// Handle `--message` mode (list or render a specific message).
@@ -2073,6 +2094,7 @@ mod tests {
             fields: Vec::new(),
             groups: Vec::new(),
             components: Vec::new(),
+            entries: Vec::new(),
         });
         assert!(component_def_has_entries(&block));
 

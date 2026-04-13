@@ -141,13 +141,15 @@ fn parse_messages(node: Node) -> anyhow::Result<Vec<Message>> {
 }
 
 fn parse_message(node: Node) -> anyhow::Result<Message> {
+    let entries = parse_container_entries(node)?;
     Ok(Message {
         name: attr(node, "name")?,
         msg_type: attr(node, "msgtype")?,
         msg_cat: sanitize_ascii(node.attribute("msgcat").unwrap_or("")),
-        fields: parse_field_refs(node)?,
-        groups: parse_groups(node)?,
-        components: parse_component_refs(node)?,
+        fields: entries.fields,
+        groups: entries.groups,
+        components: entries.components,
+        entries: entries.entries,
     })
 }
 
@@ -165,49 +167,70 @@ fn parse_component_def(node: Node, require_name: bool) -> anyhow::Result<Compone
             .map(sanitize_ascii)
             .unwrap_or_default()
     };
+    let entries = parse_container_entries(node)?;
 
     Ok(ComponentDef {
         name,
-        fields: parse_field_refs(node)?,
-        groups: parse_groups(node)?,
-        components: parse_component_refs(node)?,
+        fields: entries.fields,
+        groups: entries.groups,
+        components: entries.components,
+        entries: entries.entries,
     })
-}
-
-fn parse_groups(node: Node) -> anyhow::Result<Vec<GroupDef>> {
-    children_with_tag(node, "group").map(parse_group).collect()
 }
 
 fn parse_group(node: Node) -> anyhow::Result<GroupDef> {
+    let entries = parse_container_entries(node)?;
     Ok(GroupDef {
         name: attr(node, "name")?,
         required: node.attribute("required").map(sanitize_ascii),
-        fields: parse_field_refs(node)?,
-        groups: parse_groups(node)?,
-        components: parse_component_refs(node)?,
+        fields: entries.fields,
+        groups: entries.groups,
+        components: entries.components,
+        entries: entries.entries,
     })
 }
 
-fn parse_field_refs(node: Node) -> anyhow::Result<Vec<FieldRef>> {
-    children_with_tag(node, "field")
-        .map(|child| {
-            Ok(FieldRef {
-                name: attr(child, "name")?,
-                required: child.attribute("required").map(sanitize_ascii),
-            })
-        })
-        .collect()
+#[derive(Default)]
+struct ParsedEntries {
+    fields: Vec<FieldRef>,
+    groups: Vec<GroupDef>,
+    components: Vec<ComponentRef>,
+    entries: Vec<ContainerEntry>,
 }
 
-fn parse_component_refs(node: Node) -> anyhow::Result<Vec<ComponentRef>> {
-    children_with_tag(node, "component")
-        .map(|child| {
-            Ok(ComponentRef {
-                name: attr(child, "name")?,
-                _required: child.attribute("required").map(sanitize_ascii),
-            })
-        })
-        .collect()
+fn parse_container_entries(node: Node) -> anyhow::Result<ParsedEntries> {
+    let mut parsed = ParsedEntries::default();
+
+    for child in node.children().filter(|c| c.is_element()) {
+        match child.tag_name().name() {
+            "field" => {
+                let field = FieldRef {
+                    name: attr(child, "name")?,
+                    required: child.attribute("required").map(sanitize_ascii),
+                };
+                parsed.entries.push(ContainerEntry::Field(field.clone()));
+                parsed.fields.push(field);
+            }
+            "group" => {
+                let group = parse_group(child)?;
+                parsed.entries.push(ContainerEntry::Group(group.clone()));
+                parsed.groups.push(group);
+            }
+            "component" => {
+                let component = ComponentRef {
+                    name: attr(child, "name")?,
+                    _required: child.attribute("required").map(sanitize_ascii),
+                };
+                parsed
+                    .entries
+                    .push(ContainerEntry::Component(component.clone()));
+                parsed.components.push(component);
+            }
+            _ => {}
+        }
+    }
+
+    Ok(parsed)
 }
 
 fn attr<'a, 'input>(node: Node<'a, 'input>, name: &str) -> anyhow::Result<String> {
@@ -277,6 +300,13 @@ pub struct FieldRef {
     pub required: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub enum ContainerEntry {
+    Field(FieldRef),
+    Group(GroupDef),
+    Component(ComponentRef),
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct GroupDef {
     #[serde(rename = "@name")]
@@ -289,6 +319,8 @@ pub struct GroupDef {
     pub groups: Vec<GroupDef>,
     #[serde(rename = "component", default)]
     pub components: Vec<ComponentRef>,
+    #[serde(skip)]
+    pub entries: Vec<ContainerEntry>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -309,6 +341,8 @@ pub struct ComponentDef {
     pub groups: Vec<GroupDef>,
     #[serde(rename = "component", default)]
     pub components: Vec<ComponentRef>,
+    #[serde(skip)]
+    pub entries: Vec<ContainerEntry>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -325,6 +359,8 @@ pub struct Message {
     pub groups: Vec<GroupDef>,
     #[serde(rename = "component", default)]
     pub components: Vec<ComponentRef>,
+    #[serde(skip)]
+    pub entries: Vec<ContainerEntry>,
 }
 
 #[derive(Debug, Clone)]
