@@ -11,8 +11,11 @@ use pcap_parser::traits::{PcapNGPacketBlock, PcapReaderIterator};
 use pcap_parser::{create_reader, Linktype, PcapBlockOwned};
 use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::{self, Write};
 use std::net::IpAddr;
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::thread;
 use std::time::{Duration, Instant};
 use thiserror::Error;
 
@@ -36,7 +39,7 @@ struct Args {
     idle_timeout: u64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 struct FlowKey {
     src: IpAddr,
     dst: IpAddr,
@@ -80,11 +83,44 @@ struct CaptureOptions {
 
 #[derive(Default)]
 struct CaptureState {
-    flows: HashMap<FlowKey, FlowState>,
-    scratch: Vec<u8>,
     legacy_linktype: Option<Linktype>,
     idb_linktypes: HashMap<u32, Linktype>,
     next_if_id: u32,
+    next_packet_index: u64,
+}
+
+#[derive(Debug)]
+struct PacketWork {
+    index: u64,
+    seen_at: Instant,
+    key: FlowKey,
+    seq: u32,
+    payload: Vec<u8>,
+}
+
+#[derive(Debug)]
+struct PacketResult {
+    index: u64,
+    output: Vec<u8>,
+    warning: Option<String>,
+}
+
+#[derive(Debug)]
+struct BufferedFlowOutput {
+    key: FlowKey,
+    output: Vec<u8>,
+}
+
+struct FlowShard {
+    sender: Sender<PacketWork>,
+    handle: thread::JoinHandle<Vec<BufferedFlowOutput>>,
+}
+
+struct FlowShardPool {
+    shards: Vec<FlowShard>,
+    results: Receiver<PacketResult>,
+    pending: BTreeMap<u64, PacketResult>,
+    next_output_index: u64,
 }
 
 const FIX_BEGIN: &[u8] = b"8=FIX";
@@ -93,6 +129,139 @@ enum MessageEnd {
     Complete(usize),
     Incomplete,
     Invalid,
+}
+
+impl FlowShardPool {
+    fn new(options: CaptureOptions) -> Self {
+        let shard_count = thread::available_parallelism()
+            .map(|count| count.get())
+            .unwrap_or(1)
+            .max(1);
+        let (result_tx, result_rx) = mpsc::channel();
+        let mut shards = Vec::with_capacity(shard_count);
+
+        for index in 0..shard_count {
+            let (work_tx, work_rx) = mpsc::channel();
+            let shard_results = result_tx.clone();
+            let shard_options = options;
+            let handle = thread::Builder::new()
+                .name(format!("pcap2fix-flow-{index}"))
+                .spawn(move || run_flow_shard(work_rx, shard_results, shard_options))
+                .expect("flow shard thread should start");
+            shards.push(FlowShard {
+                sender: work_tx,
+                handle,
+            });
+        }
+        drop(result_tx);
+
+        Self {
+            shards,
+            results: result_rx,
+            pending: BTreeMap::new(),
+            next_output_index: 0,
+        }
+    }
+
+    fn submit<W: Write>(&mut self, work: PacketWork, out: &mut W) -> Result<()> {
+        let shard_index = self.shard_index(work.key);
+        self.shards[shard_index]
+            .sender
+            .send(work)
+            .map_err(|_| anyhow!("flow shard worker stopped unexpectedly"))?;
+        self.drain_ready_results(out)
+    }
+
+    fn finish<W: Write>(mut self, out: &mut W) -> Result<()> {
+        self.drain_ready_results(out)?;
+
+        let mut buffered = Vec::new();
+        for shard in self.shards.drain(..) {
+            drop(shard.sender);
+            buffered.extend(
+                shard
+                    .handle
+                    .join()
+                    .map_err(|_| anyhow!("flow shard worker panicked"))?,
+            );
+        }
+
+        while let Ok(result) = self.results.recv() {
+            self.record_result(result, out)?;
+        }
+
+        if !self.pending.is_empty() {
+            return Err(anyhow!("flow shard results were not emitted in full"));
+        }
+
+        buffered.sort_by_key(|item| item.key);
+        for item in buffered {
+            out.write_all(&item.output)?;
+        }
+
+        Ok(())
+    }
+
+    fn shard_index(&self, key: FlowKey) -> usize {
+        if self.shards.len() == 1 {
+            return 0;
+        }
+        let mut hasher = DefaultHasher::new();
+        key.hash(&mut hasher);
+        (hasher.finish() as usize) % self.shards.len()
+    }
+
+    fn drain_ready_results<W: Write>(&mut self, out: &mut W) -> Result<()> {
+        while let Ok(result) = self.results.try_recv() {
+            self.record_result(result, out)?;
+        }
+        Ok(())
+    }
+
+    fn record_result<W: Write>(&mut self, result: PacketResult, out: &mut W) -> Result<()> {
+        self.pending.insert(result.index, result);
+
+        while let Some(result) = self.pending.remove(&self.next_output_index) {
+            if let Some(warning) = result.warning {
+                eprintln!("{warning}");
+            }
+            out.write_all(&result.output)?;
+            self.next_output_index += 1;
+        }
+
+        Ok(())
+    }
+}
+
+fn run_flow_shard(
+    work_rx: Receiver<PacketWork>,
+    result_tx: Sender<PacketResult>,
+    options: CaptureOptions,
+) -> Vec<BufferedFlowOutput> {
+    let mut flows = HashMap::new();
+    let mut scratch = Vec::new();
+
+    while let Ok(work) = work_rx.recv() {
+        let mut output = Vec::new();
+        let warning = handle_packet_work(&work, &options, &mut flows, &mut scratch, &mut output)
+            .err()
+            .map(|err| format!("warn: skipping packet: {err}"));
+
+        if result_tx
+            .send(PacketResult {
+                index: work.index,
+                output,
+                warning,
+            })
+            .is_err()
+        {
+            break;
+        }
+
+        evict_idle_at(&mut flows, options.idle_timeout, work.seen_at);
+    }
+
+    flush_remaining_flow_outputs(&mut flows, options.delimiter, &mut scratch)
 }
 
 fn main() -> Result<()> {
@@ -108,10 +277,11 @@ fn run(args: Args) -> Result<()> {
     };
     let mut reader = open_reader(&args.input)?;
     let mut state = CaptureState::default();
+    let mut shards = FlowShardPool::new(options);
     let mut stdout = io::BufWriter::new(io::stdout().lock());
 
-    process_capture(&mut *reader, &options, &mut state, &mut stdout)?;
-    flush_remaining_flows(&mut state, options.delimiter, &mut stdout)?;
+    process_capture(&mut *reader, &options, &mut state, &mut shards, &mut stdout)?;
+    shards.finish(&mut stdout)?;
     stdout.flush()?;
     Ok(())
 }
@@ -120,14 +290,14 @@ fn process_capture<R: PcapReaderIterator + ?Sized, W: Write>(
     reader: &mut R,
     options: &CaptureOptions,
     state: &mut CaptureState,
+    shards: &mut FlowShardPool,
     out: &mut W,
 ) -> Result<()> {
     loop {
         match reader.next() {
             Ok((offset, block)) => {
-                handle_block(block, options, state, out);
+                handle_block(block, options, state, shards, out);
                 reader.consume(offset);
-                evict_idle(&mut state.flows, options.idle_timeout);
             }
             Err(pcap_parser::PcapError::Eof) => return Ok(()),
             Err(pcap_parser::PcapError::Incomplete) => {
@@ -144,6 +314,7 @@ fn handle_block<W: Write>(
     block: PcapBlockOwned<'_>,
     options: &CaptureOptions,
     state: &mut CaptureState,
+    shards: &mut FlowShardPool,
     out: &mut W,
 ) {
     match block {
@@ -158,10 +329,11 @@ fn handle_block<W: Write>(
                 packet.caplen as usize,
                 options,
                 state,
+                shards,
                 out,
             );
         }
-        PcapBlockOwned::NG(block) => handle_ng_block(block, options, state, out),
+        PcapBlockOwned::NG(block) => handle_ng_block(block, options, state, shards, out),
     }
 }
 
@@ -169,6 +341,7 @@ fn handle_ng_block<W: Write>(
     block: Block<'_>,
     options: &CaptureOptions,
     state: &mut CaptureState,
+    shards: &mut FlowShardPool,
     out: &mut W,
 ) {
     match block {
@@ -190,6 +363,7 @@ fn handle_ng_block<W: Write>(
                     packet.caplen as usize,
                     options,
                     state,
+                    shards,
                     out,
                 );
             }
@@ -202,6 +376,7 @@ fn handle_ng_block<W: Write>(
                     packet.origlen as usize,
                     options,
                     state,
+                    shards,
                     out,
                 );
             }
@@ -216,32 +391,23 @@ fn handle_packet_block<W: Write>(
     captured_len: usize,
     options: &CaptureOptions,
     state: &mut CaptureState,
+    shards: &mut FlowShardPool,
     out: &mut W,
 ) {
     let Some(packet) = get_packetdata(data, linktype, captured_len) else {
         return;
     };
-    if let Err(err) = handle_packet_data(
-        packet,
-        options.port_filter,
-        options.delimiter,
-        options.max_flow_bytes,
-        &mut state.flows,
-        out,
-    ) {
-        eprintln!("warn: skipping packet: {err}");
+    let index = state.next_packet_index;
+    match packet_to_work(packet, options.port_filter, index, Instant::now()) {
+        Ok(Some(work)) => {
+            state.next_packet_index += 1;
+            if let Err(err) = shards.submit(work, out) {
+                eprintln!("warn: skipping packet: {err}");
+            }
+        }
+        Ok(None) => {}
+        Err(err) => eprintln!("warn: skipping packet: {err}"),
     }
-}
-
-fn flush_remaining_flows<W: Write>(
-    state: &mut CaptureState,
-    delimiter: u8,
-    out: &mut W,
-) -> Result<()> {
-    for flow in state.flows.values_mut() {
-        flush_complete_messages(&mut flow.buffer, delimiter, &mut state.scratch, out)?;
-    }
-    Ok(())
 }
 
 fn open_reader(path: &str) -> Result<Box<dyn PcapReaderIterator>> {
@@ -271,37 +437,33 @@ fn parse_delimiter(raw: &str) -> Result<u8> {
     ))
 }
 
-fn handle_packet_data<W: Write>(
+fn packet_to_work(
     packet: PacketData<'_>,
     port_filter: Option<u16>,
-    delimiter: u8,
-    max_flow_bytes: usize,
-    flows: &mut HashMap<FlowKey, FlowState>,
-    out: &mut W,
-) -> Result<()> {
+    index: u64,
+    seen_at: Instant,
+) -> Result<Option<PacketWork>> {
     match packet {
         PacketData::L2(data) => {
             let sliced = SlicedPacket::from_ethernet(data).map_err(|e| anyhow!("parse: {e:?}"))?;
-            handle_sliced_packet(sliced, port_filter, delimiter, max_flow_bytes, flows, out)
+            sliced_packet_to_work(sliced, port_filter, index, seen_at)
         }
         PacketData::L3(ethertype, data)
             if ethertype == ETHERTYPE_IPV4 || ethertype == ETHERTYPE_IPV6 =>
         {
             let sliced = SlicedPacket::from_ip(data).map_err(|e| anyhow!("parse: {e:?}"))?;
-            handle_sliced_packet(sliced, port_filter, delimiter, max_flow_bytes, flows, out)
+            sliced_packet_to_work(sliced, port_filter, index, seen_at)
         }
-        _ => Ok(()),
+        _ => Ok(None),
     }
 }
 
-fn handle_sliced_packet<W: Write>(
+fn sliced_packet_to_work(
     sliced: SlicedPacket<'_>,
     port_filter: Option<u16>,
-    delimiter: u8,
-    max_flow_bytes: usize,
-    flows: &mut HashMap<FlowKey, FlowState>,
-    out: &mut W,
-) -> Result<()> {
+    index: u64,
+    seen_at: Instant,
+) -> Result<Option<PacketWork>> {
     let (src, dst, tcp) = match (sliced.net, sliced.transport) {
         (Some(NetSlice::Ipv4(ip)), Some(TransportSlice::Tcp(tcp))) => (
             IpAddr::V4(ip.header().source_addr()),
@@ -313,39 +475,103 @@ fn handle_sliced_packet<W: Write>(
             IpAddr::V6(ip.header().destination_addr()),
             tcp,
         ),
-        _ => return Ok(()),
+        _ => return Ok(None),
     };
     if let Some(p) = port_filter {
         if tcp.source_port() != p && tcp.destination_port() != p {
-            return Ok(());
+            return Ok(None);
         }
     }
 
     let payload = tcp.payload();
     if payload.is_empty() {
-        return Ok(());
+        return Ok(None);
     }
 
-    let key = FlowKey {
-        src,
-        dst,
-        sport: tcp.source_port(),
-        dport: tcp.destination_port(),
-    };
-
-    let seq = tcp.sequence_number();
-    let flow = flows.entry(key).or_default();
-    flow.last_seen = Instant::now();
-
-    reassemble_and_emit(flow, seq, payload, delimiter, max_flow_bytes, out)
+    Ok(Some(PacketWork {
+        index,
+        seen_at,
+        key: FlowKey {
+            src,
+            dst,
+            sport: tcp.source_port(),
+            dport: tcp.destination_port(),
+        },
+        seq: tcp.sequence_number(),
+        payload: payload.to_vec(),
+    }))
 }
 
+fn handle_packet_work<W: Write>(
+    work: &PacketWork,
+    options: &CaptureOptions,
+    flows: &mut HashMap<FlowKey, FlowState>,
+    scratch: &mut Vec<u8>,
+    out: &mut W,
+) -> Result<()> {
+    let flow = flows.entry(work.key).or_default();
+    flow.last_seen = work.seen_at;
+    reassemble_and_emit_with_scratch(
+        flow,
+        work.seq,
+        &work.payload,
+        options.delimiter,
+        options.max_flow_bytes,
+        scratch,
+        out,
+    )
+}
+
+#[cfg(test)]
+fn handle_sliced_packet<W: Write>(
+    sliced: SlicedPacket<'_>,
+    port_filter: Option<u16>,
+    delimiter: u8,
+    max_flow_bytes: usize,
+    flows: &mut HashMap<FlowKey, FlowState>,
+    out: &mut W,
+) -> Result<()> {
+    let options = CaptureOptions {
+        port_filter,
+        delimiter,
+        max_flow_bytes,
+        idle_timeout: Duration::from_secs(60),
+    };
+    let Some(work) = sliced_packet_to_work(sliced, port_filter, 0, Instant::now())? else {
+        return Ok(());
+    };
+    let mut scratch = Vec::new();
+    handle_packet_work(&work, &options, flows, &mut scratch, out)
+}
+
+#[cfg(test)]
 fn reassemble_and_emit<W: Write>(
     flow: &mut FlowState,
     seq: u32,
     payload: &[u8],
     delimiter: u8,
     max_flow_bytes: usize,
+    out: &mut W,
+) -> Result<()> {
+    let mut scratch = Vec::new();
+    reassemble_and_emit_with_scratch(
+        flow,
+        seq,
+        payload,
+        delimiter,
+        max_flow_bytes,
+        &mut scratch,
+        out,
+    )
+}
+
+fn reassemble_and_emit_with_scratch<W: Write>(
+    flow: &mut FlowState,
+    seq: u32,
+    payload: &[u8],
+    delimiter: u8,
+    max_flow_bytes: usize,
+    scratch: &mut Vec<u8>,
     out: &mut W,
 ) -> Result<()> {
     let expected = flow.next_seq.unwrap_or(seq);
@@ -367,8 +593,7 @@ fn reassemble_and_emit<W: Write>(
         return Err(ReassemblyError::Overflow.into());
     }
 
-    let mut scratch = Vec::new();
-    flush_complete_messages(&mut flow.buffer, delimiter, &mut scratch, out)?;
+    flush_complete_messages(&mut flow.buffer, delimiter, scratch, out)?;
     Ok(())
 }
 
@@ -558,8 +783,33 @@ fn parse_decimal(bytes: &[u8]) -> Option<usize> {
     }
     Some(val)
 }
+
+fn flush_remaining_flow_outputs(
+    flows: &mut HashMap<FlowKey, FlowState>,
+    delimiter: u8,
+    scratch: &mut Vec<u8>,
+) -> Vec<BufferedFlowOutput> {
+    let mut ordered_flows: Vec<_> = flows.drain().collect();
+    ordered_flows.sort_by_key(|(key, _)| *key);
+
+    let mut outputs = Vec::new();
+    for (key, mut flow) in ordered_flows {
+        let mut output = Vec::new();
+        flush_complete_messages(&mut flow.buffer, delimiter, scratch, &mut output)
+            .expect("writing flow output into a Vec cannot fail");
+        if !output.is_empty() {
+            outputs.push(BufferedFlowOutput { key, output });
+        }
+    }
+    outputs
+}
+
+#[cfg(test)]
 fn evict_idle(flows: &mut HashMap<FlowKey, FlowState>, idle: Duration) {
-    let now = Instant::now();
+    evict_idle_at(flows, idle, Instant::now());
+}
+
+fn evict_idle_at(flows: &mut HashMap<FlowKey, FlowState>, idle: Duration, now: Instant) {
     flows.retain(|_, state| now.duration_since(state.last_seen) < idle);
 }
 
@@ -867,6 +1117,100 @@ mod tests {
 
         assert_eq!(flows.len(), 1);
         assert!(flows.keys().any(|flow| flow.sport == 5002));
+    }
+
+    #[test]
+    fn flow_shard_pool_orders_results_by_packet_index() {
+        let (_tx, rx) = mpsc::channel();
+        let mut pool = FlowShardPool {
+            shards: Vec::new(),
+            results: rx,
+            pending: BTreeMap::new(),
+            next_output_index: 0,
+        };
+        let mut out = Vec::new();
+
+        pool.record_result(
+            PacketResult {
+                index: 1,
+                output: b"second\n".to_vec(),
+                warning: None,
+            },
+            &mut out,
+        )
+        .unwrap();
+        assert!(
+            out.is_empty(),
+            "later packets should wait for earlier output"
+        );
+
+        pool.record_result(
+            PacketResult {
+                index: 0,
+                output: b"first\n".to_vec(),
+                warning: None,
+            },
+            &mut out,
+        )
+        .unwrap();
+
+        assert_eq!(out, b"first\nsecond\n");
+        assert!(pool.pending.is_empty());
+        assert_eq!(pool.next_output_index, 2);
+    }
+
+    #[test]
+    fn flush_remaining_flow_outputs_are_sorted_by_flow_key() {
+        let msg_a = build_fix_message("35=0|49=AAA|", b'|');
+        let msg_b = build_fix_message("35=1|49=BBB|", b'|');
+        let key_a = FlowKey {
+            src: "10.0.0.1".parse().unwrap(),
+            dst: "10.0.0.2".parse().unwrap(),
+            sport: 5000,
+            dport: 5001,
+        };
+        let key_b = FlowKey {
+            src: "10.0.0.3".parse().unwrap(),
+            dst: "10.0.0.4".parse().unwrap(),
+            sport: 5002,
+            dport: 5003,
+        };
+        let mut flows = HashMap::new();
+        flows.insert(
+            key_b,
+            FlowState {
+                buffer: msg_b.clone(),
+                ..FlowState::default()
+            },
+        );
+        flows.insert(
+            key_a,
+            FlowState {
+                buffer: msg_a.clone(),
+                ..FlowState::default()
+            },
+        );
+
+        let mut scratch = Vec::new();
+        let outputs = flush_remaining_flow_outputs(&mut flows, b'|', &mut scratch);
+
+        assert!(flows.is_empty(), "all flow buffers should be drained");
+        assert_eq!(outputs.len(), 2);
+        assert_eq!(outputs[0].key, key_a);
+        assert_eq!(outputs[1].key, key_b);
+
+        let expected_a = {
+            let mut value = msg_a.clone();
+            value.push(b'\n');
+            value
+        };
+        let expected_b = {
+            let mut value = msg_b.clone();
+            value.push(b'\n');
+            value
+        };
+        assert_eq!(outputs[0].output, expected_a);
+        assert_eq!(outputs[1].output, expected_b);
     }
 
     #[test]

@@ -9,10 +9,12 @@
 use crate::decoder::colours::{ColourPalette, palette};
 use crate::decoder::layout::{NEST_INDENT, TAG_WIDTH};
 use crate::decoder::schema::{
-    ComponentNode, ContainerNode, Field, FieldNode, GroupNode, MessageNode, SchemaTree, Value,
+    ComponentNode, ContainerNode, ContainerNodeVisitor, Field, FieldNode, GroupNode, MessageNode,
+    SchemaTree, Value, walk_container_nodes,
 };
 use std::cmp;
 use std::collections::HashMap;
+use std::convert::Infallible;
 use std::fmt;
 use std::io::{self, Write};
 use terminal_size::{Width, terminal_size};
@@ -977,7 +979,7 @@ impl<'a, 'b, W: Write> RenderContext<'a, 'b, W> {
             colours.reset
         )?;
 
-        self.render_container_entries(
+        self.render_entries(
             Some(msg),
             &msg.entries,
             indent_level + NEST_INDENT,
@@ -1008,22 +1010,9 @@ impl<'a, 'b, W: Write> RenderContext<'a, 'b, W> {
         indent_level: usize,
         style: DisplayStyle,
     ) -> io::Result<()> {
-        let style = if self.verbose && style.columns_enabled() && style.layout().is_none() {
-            style.with_layout(self.cached_component_layout(component, indent_level))
-        } else {
-            style
-        };
-        let colours = style.colours();
-        writeln!(
-            self.out,
-            "{}Component: {}{}{}",
-            indent(indent_level),
-            colours.name,
-            component.name,
-            colours.reset
-        )?;
-
-        self.render_container_entries(msg, &component.entries, indent_level + NEST_INDENT, style)?;
+        let style = self.resolve_component_style(component, indent_level, style);
+        self.render_component_header(component, indent_level, style)?;
+        self.render_entries(msg, &component.entries, indent_level + NEST_INDENT, style)?;
         Ok(())
     }
 
@@ -1039,18 +1028,79 @@ impl<'a, 'b, W: Write> RenderContext<'a, 'b, W> {
         indent_level: usize,
         style: DisplayStyle,
     ) -> io::Result<()> {
-        let style = if self.verbose && style.columns_enabled() && style.layout().is_none() {
+        let style = self.resolve_group_style(group, indent_level, style);
+        self.render_group_header(group, indent_level, style)?;
+        self.render_entries(None, &group.entries, indent_level + NEST_INDENT, style)?;
+        Ok(())
+    }
+
+    fn render_entries(
+        &mut self,
+        msg: Option<&'b MessageNode>,
+        entries: &'b [ContainerNode],
+        indent_level: usize,
+        style: DisplayStyle,
+    ) -> io::Result<()> {
+        let mut visitor = RenderVisitor::new(self, msg, style);
+        walk_container_nodes(entries, indent_level, NEST_INDENT, &mut visitor)
+    }
+
+    fn resolve_component_style(
+        &mut self,
+        component: &'b ComponentNode,
+        indent_level: usize,
+        style: DisplayStyle,
+    ) -> DisplayStyle {
+        if self.verbose && style.columns_enabled() && style.layout().is_none() {
+            style.with_layout(self.cached_component_layout(component, indent_level))
+        } else {
+            style
+        }
+    }
+
+    fn resolve_group_style(
+        &mut self,
+        group: &'b GroupNode,
+        indent_level: usize,
+        style: DisplayStyle,
+    ) -> DisplayStyle {
+        if self.verbose && style.columns_enabled() && style.layout().is_none() {
             style.with_layout(self.cached_group_layout(group, indent_level))
         } else {
             style
-        };
+        }
+    }
+
+    fn render_component_header(
+        &mut self,
+        component: &'b ComponentNode,
+        indent_level: usize,
+        style: DisplayStyle,
+    ) -> io::Result<()> {
+        let colours = style.colours();
+        writeln!(
+            self.out,
+            "{}Component: {}{}{}",
+            indent(indent_level),
+            colours.name,
+            component.name,
+            colours.reset
+        )
+    }
+
+    fn render_group_header(
+        &mut self,
+        group: &'b GroupNode,
+        indent_level: usize,
+        style: DisplayStyle,
+    ) -> io::Result<()> {
         let colours = style.colours();
         if let Some(count_field) = self.schema.fields.get(&group.name) {
             let count_node = FieldNode {
                 required: group.required,
                 field: count_field.clone(),
             };
-            print_field(self.out, &count_node, indent_level, colours)?;
+            print_field(self.out, &count_node, indent_level, colours)
         } else {
             writeln!(
                 self.out,
@@ -1060,38 +1110,8 @@ impl<'a, 'b, W: Write> RenderContext<'a, 'b, W> {
                 group.name,
                 colours.reset,
                 format_required(group.required, colours)
-            )?;
+            )
         }
-
-        self.render_container_entries(None, &group.entries, indent_level + NEST_INDENT, style)?;
-        Ok(())
-    }
-
-    fn render_container_entries(
-        &mut self,
-        msg: Option<&'b MessageNode>,
-        entries: &'b [ContainerNode],
-        indent_level: usize,
-        style: DisplayStyle,
-    ) -> io::Result<()> {
-        let colours = style.colours();
-        for entry in entries {
-            match entry {
-                ContainerNode::Field(field) => {
-                    print_field(self.out, field, indent_level, colours)?;
-                    if self.verbose {
-                        self.print_enums_for_field(field, msg, indent_level + 2, style)?;
-                    }
-                }
-                ContainerNode::Component(component) => {
-                    self.render_component_with_style(msg, component, indent_level, style)?;
-                }
-                ContainerNode::Group(group) => {
-                    self.render_group_with_style(group, indent_level, style)?;
-                }
-            }
-        }
-        Ok(())
     }
 
     fn print_enums_for_field(
@@ -1160,6 +1180,99 @@ impl<'a, 'b, W: Write> RenderContext<'a, 'b, W> {
             self.layout_cache.insert(key, value);
         }
         layout
+    }
+}
+
+struct RenderVisitor<'ctx, 'out, 'schema, W: Write> {
+    ctx: &'ctx mut RenderContext<'out, 'schema, W>,
+    msg: Option<&'schema MessageNode>,
+    style_stack: Vec<DisplayStyle>,
+}
+
+impl<'ctx, 'out, 'schema, W: Write> RenderVisitor<'ctx, 'out, 'schema, W> {
+    fn new(
+        ctx: &'ctx mut RenderContext<'out, 'schema, W>,
+        msg: Option<&'schema MessageNode>,
+        style: DisplayStyle,
+    ) -> Self {
+        Self {
+            ctx,
+            msg,
+            style_stack: vec![style],
+        }
+    }
+
+    fn current_style(&self) -> DisplayStyle {
+        *self
+            .style_stack
+            .last()
+            .expect("render visitor always has an active style")
+    }
+}
+
+impl<'ctx, 'out, 'schema, W: Write> ContainerNodeVisitor<'schema>
+    for RenderVisitor<'ctx, 'out, 'schema, W>
+{
+    type Error = io::Error;
+
+    fn visit_field(
+        &mut self,
+        field: &'schema FieldNode,
+        indent_level: usize,
+    ) -> Result<(), Self::Error> {
+        let style = self.current_style();
+        let colours = style.colours();
+        print_field(self.ctx.out, field, indent_level, colours)?;
+        if self.ctx.verbose {
+            self.ctx
+                .print_enums_for_field(field, self.msg, indent_level + 2, style)?;
+        }
+        Ok(())
+    }
+
+    fn enter_component(
+        &mut self,
+        component: &'schema ComponentNode,
+        indent_level: usize,
+    ) -> Result<(), Self::Error> {
+        let style = self
+            .ctx
+            .resolve_component_style(component, indent_level, self.current_style());
+        self.ctx
+            .render_component_header(component, indent_level, style)?;
+        self.style_stack.push(style);
+        Ok(())
+    }
+
+    fn leave_component(
+        &mut self,
+        _component: &'schema ComponentNode,
+        _indent_level: usize,
+    ) -> Result<(), Self::Error> {
+        self.style_stack.pop();
+        Ok(())
+    }
+
+    fn enter_group(
+        &mut self,
+        group: &'schema GroupNode,
+        indent_level: usize,
+    ) -> Result<(), Self::Error> {
+        let style = self
+            .ctx
+            .resolve_group_style(group, indent_level, self.current_style());
+        self.ctx.render_group_header(group, indent_level, style)?;
+        self.style_stack.push(style);
+        Ok(())
+    }
+
+    fn leave_group(
+        &mut self,
+        _group: &'schema GroupNode,
+        _indent_level: usize,
+    ) -> Result<(), Self::Error> {
+        self.style_stack.pop();
+        Ok(())
     }
 }
 
@@ -1373,18 +1486,6 @@ fn compute_values_layout(values: &[&Value], indent_level: usize) -> Option<Colum
     stats.finalize()
 }
 
-fn collect_fields_layout(fields: &[FieldNode], indent_level: usize, stats: &mut LayoutStats) {
-    for field in fields {
-        let max_entry = field
-            .field
-            .values_iter()
-            .map(|v| v.enumeration.len() + 2 + v.description.len())
-            .max()
-            .unwrap_or(0);
-        stats.record(max_entry, indent_level);
-    }
-}
-
 fn collect_component_layout(
     component: &ComponentNode,
     indent_level: usize,
@@ -1402,18 +1503,51 @@ fn collect_container_layout(
     indent_level: usize,
     stats: &mut LayoutStats,
 ) {
-    for entry in entries {
-        match entry {
-            ContainerNode::Field(field) => {
-                collect_fields_layout(std::slice::from_ref(field), indent_level + 2, stats)
-            }
-            ContainerNode::Component(component) => {
-                collect_component_layout(component, indent_level, stats);
-            }
-            ContainerNode::Group(group) => {
-                collect_group_layout(group, indent_level, stats);
-            }
-        }
+    let mut visitor = LayoutVisitor { stats };
+    walk_container_nodes(entries, indent_level, NEST_INDENT, &mut visitor)
+        .expect("layout collection cannot fail");
+}
+
+fn field_layout_width(field: &FieldNode) -> usize {
+    field
+        .field
+        .values_iter()
+        .map(|value| value.enumeration.len() + 2 + value.description.len())
+        .max()
+        .unwrap_or(0)
+}
+
+struct LayoutVisitor<'a> {
+    stats: &'a mut LayoutStats,
+}
+
+impl<'a> ContainerNodeVisitor<'a> for LayoutVisitor<'_> {
+    type Error = Infallible;
+
+    fn visit_field(
+        &mut self,
+        field: &'a FieldNode,
+        indent_level: usize,
+    ) -> Result<(), Self::Error> {
+        self.stats
+            .record(field_layout_width(field), indent_level + 2);
+        Ok(())
+    }
+
+    fn enter_component(
+        &mut self,
+        _component: &'a ComponentNode,
+        _indent_level: usize,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn enter_group(
+        &mut self,
+        _group: &'a GroupNode,
+        _indent_level: usize,
+    ) -> Result<(), Self::Error> {
+        Ok(())
     }
 }
 

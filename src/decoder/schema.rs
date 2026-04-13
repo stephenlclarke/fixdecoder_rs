@@ -415,6 +415,72 @@ pub enum ContainerNode {
     Component(ComponentNode),
 }
 
+pub trait ContainerNodeVisitor<'a> {
+    type Error;
+
+    fn visit_field(&mut self, field: &'a FieldNode, indent_level: usize)
+    -> Result<(), Self::Error>;
+
+    fn enter_component(
+        &mut self,
+        component: &'a ComponentNode,
+        indent_level: usize,
+    ) -> Result<(), Self::Error>;
+
+    fn leave_component(
+        &mut self,
+        _component: &'a ComponentNode,
+        _indent_level: usize,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn enter_group(&mut self, group: &'a GroupNode, indent_level: usize)
+    -> Result<(), Self::Error>;
+
+    fn leave_group(
+        &mut self,
+        _group: &'a GroupNode,
+        _indent_level: usize,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+pub fn walk_container_nodes<'a, V: ContainerNodeVisitor<'a>>(
+    entries: &'a [ContainerNode],
+    indent_level: usize,
+    child_indent: usize,
+    visitor: &mut V,
+) -> Result<(), V::Error> {
+    for entry in entries {
+        match entry {
+            ContainerNode::Field(field) => visitor.visit_field(field, indent_level)?,
+            ContainerNode::Component(component) => {
+                visitor.enter_component(component, indent_level)?;
+                walk_container_nodes(
+                    &component.entries,
+                    indent_level + child_indent,
+                    child_indent,
+                    visitor,
+                )?;
+                visitor.leave_component(component, indent_level)?;
+            }
+            ContainerNode::Group(group) => {
+                visitor.enter_group(group, indent_level)?;
+                walk_container_nodes(
+                    &group.entries,
+                    indent_level + child_indent,
+                    child_indent,
+                    visitor,
+                )?;
+                visitor.leave_group(group, indent_level)?;
+            }
+        }
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone)]
 pub struct SchemaTree {
     pub fields: BTreeMap<String, Arc<Field>>,
