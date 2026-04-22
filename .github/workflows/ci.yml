@@ -387,6 +387,8 @@ jobs:
                 ;;
             esac
           done
+      - name: Add release notice
+        run: cp resources/NOTICE.md dist/NOTICE.md
       - name: Generate release checksums
         run: |
           set -euo pipefail
