@@ -355,10 +355,16 @@ jobs:
           fi
           echo "version=${tag_version}" >> "${GITHUB_OUTPUT}"
           echo "tag_name=${ref}" >> "${GITHUB_OUTPUT}"
-      - name: Download build artifacts
+      - name: Download fixdecoder artifacts
         uses: actions/download-artifact@v8
         with:
-          pattern: "*"
+          pattern: "fixdecoder-*"
+          path: dist
+          merge-multiple: true
+      - name: Download pcap2fix artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: "pcap2fix-*"
           path: dist
           merge-multiple: true
       - name: Rename artifacts with version
