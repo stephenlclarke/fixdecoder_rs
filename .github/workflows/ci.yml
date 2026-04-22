@@ -235,6 +235,11 @@ jobs:
             artifact_path: target/x86_64-unknown-linux-gnu/release/fixdecoder
             asset_suffix: linux-gnu-x86_64
             ext: ""
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            artifact_path: target/aarch64-unknown-linux-gnu/release/fixdecoder
+            asset_suffix: linux-gnu-arm64
+            ext: ""
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             setup: sudo apt-get update && sudo apt-get install -y musl-tools
