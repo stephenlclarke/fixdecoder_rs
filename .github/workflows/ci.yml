@@ -219,33 +219,39 @@ jobs:
             target: aarch64-apple-darwin
             artifact_path: target/aarch64-apple-darwin/release/fixdecoder
             asset_suffix: darwin-arm64
-            ext: ""
+            binary_ext: ""
+            asset_ext: ".tar.gz"
           - os: macos-15-intel
             target: x86_64-apple-darwin
             artifact_path: target/x86_64-apple-darwin/release/fixdecoder
             asset_suffix: darwin-x86_64
-            ext: ""
+            binary_ext: ""
+            asset_ext: ".tar.gz"
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact_path: target/x86_64-pc-windows-msvc/release/fixdecoder.exe
             asset_suffix: windows-x86_64
-            ext: ".exe"
+            binary_ext: ".exe"
+            asset_ext: ".exe"
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact_path: target/x86_64-unknown-linux-gnu/release/fixdecoder
             asset_suffix: linux-gnu-x86_64
-            ext: ""
+            binary_ext: ""
+            asset_ext: ".tar.gz"
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             artifact_path: target/aarch64-unknown-linux-gnu/release/fixdecoder
             asset_suffix: linux-gnu-arm64
-            ext: ""
+            binary_ext: ""
+            asset_ext: ".tar.gz"
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             setup: sudo apt-get update && sudo apt-get install -y musl-tools
             artifact_path: target/x86_64-unknown-linux-musl/release/fixdecoder
             asset_suffix: linux-musl-x86_64
-            ext: ""
+            binary_ext: ""
+            asset_ext: ".tar.gz"
     runs-on: ${{ matrix.os }}
     needs: [dictionaries]
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
@@ -310,11 +316,22 @@ jobs:
       - name: Stage artifact
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p dist
-          cp "${{ matrix.artifact_path }}" "dist/fixdecoder-${{ matrix.asset_suffix }}${{ matrix.ext }}"
-          pcap_path="target/${{ matrix.target }}/release/pcap2fix${{ matrix.ext }}"
+          fix_asset="dist/fixdecoder-${{ matrix.asset_suffix }}${{ matrix.asset_ext }}"
+          if [[ "${{ matrix.asset_ext }}" == ".exe" ]]; then
+            cp "${{ matrix.artifact_path }}" "${fix_asset}"
+          else
+            tar -C "$(dirname "${{ matrix.artifact_path }}")" -czf "${fix_asset}" "$(basename "${{ matrix.artifact_path }}")"
+          fi
+          pcap_path="target/${{ matrix.target }}/release/pcap2fix${{ matrix.binary_ext }}"
           if [ -f "$pcap_path" ]; then
-            cp "$pcap_path" "dist/pcap2fix-${{ matrix.asset_suffix }}${{ matrix.ext }}"
+            pcap_asset="dist/pcap2fix-${{ matrix.asset_suffix }}${{ matrix.asset_ext }}"
+            if [[ "${{ matrix.asset_ext }}" == ".exe" ]]; then
+              cp "$pcap_path" "${pcap_asset}"
+            else
+              tar -C "$(dirname "$pcap_path")" -czf "${pcap_asset}" "$(basename "$pcap_path")"
+            fi
           else
             echo "pcap2fix binary not found at $pcap_path" >&2
             exit 1
@@ -323,12 +340,12 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: fixdecoder-${{ matrix.asset_suffix }}
-          path: dist/fixdecoder-${{ matrix.asset_suffix }}${{ matrix.ext }}
+          path: dist/fixdecoder-${{ matrix.asset_suffix }}${{ matrix.asset_ext }}
       - name: Upload pcap2fix artifact
         uses: actions/upload-artifact@v7
         with:
           name: pcap2fix-${{ matrix.asset_suffix }}
-          path: dist/pcap2fix-${{ matrix.asset_suffix }}${{ matrix.ext }}
+          path: dist/pcap2fix-${{ matrix.asset_suffix }}${{ matrix.asset_ext }}
 
   release:
     name: Publish Release
@@ -374,6 +391,12 @@ jobs:
           for f in dist/fixdecoder-* dist/pcap2fix-*; do
             base="${f##*/}"
             case "$base" in
+              fixdecoder-*.tar.gz|pcap2fix-*.tar.gz)
+                prefix="${base%%-*}"
+                suffix="${base#${prefix}-}"
+                suffix="${suffix%.tar.gz}"
+                mv "$f" "dist/${prefix}-${ver}.${suffix}.tar.gz"
+                ;;
               fixdecoder-*.exe|pcap2fix-*.exe)
                 prefix="${base%%-*}"
                 suffix="${base#${prefix}-}"

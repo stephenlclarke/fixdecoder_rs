@@ -168,7 +168,8 @@ Track FIX order lifecycles and emit a summary instead of full decoded messages. 
 
 # Download it
 
-Check out the Repo's [Releases Page](https://github.com/stephenlclarke/fixdecoder2/releases) to see what versions are available for the computer you want to run it on.
+Check out the Repo's [Releases Page](https://github.com/stephenlclarke/fixdecoder_rs/releases) to see what versions are available for the computer you want to run it on.
+Unix release assets are published as `.tar.gz` archives so the executable bit is preserved when you download them; extract the archive before running `fixdecoder` or `pcap2fix`. Windows releases are published as `.exe` files.
 
 # Build it
 
