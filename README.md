@@ -95,7 +95,7 @@ Use these flags to explore the active FIX dictionary. `--verbose` adds detail / 
 
 ### `--message[=<NAME|MsgType>]`
 
-Browse messages. With no value, list all message types (use --`column` for a compact view). With a name or MsgType (e.g., `D` or `NewOrderSingle`), render the message structure (fields, components, repeating groups); `--header`/`--trailer` include session blocks. Reports “Message not found” if absent.
+Browse messages. With no value, list all message types (use --`column` for a compact view). The listing is grouped into `Session/Admin` and business buckets such as `Order Flow`, `Quotes & Pricing`, and `Market Data`. Business bucketing now uses an explicit reviewed `MsgType` mapping rather than name heuristics, generated from official FIX Trading Community online-specification category tables. With a name or MsgType (e.g., `D` or `NewOrderSingle`), render the message structure (fields, components, repeating groups); `--header`/`--trailer` include session blocks. Reports “Message not found” if absent.
 
 ### `--component[=<NAME>]`
 
@@ -164,16 +164,19 @@ Stream input like `tail -f`. Keeps reading and decoding as new data arrives on s
 
 ### `--summary`
 
-Track FIX order lifecycles and emit a summary instead of full decoded messages. When enabled, each message is consumed into an order tracker (keyed by `OrderID`/`ClOrdID`/`OrigClOrdID`), updating state, quantities, prices, and events. At the end (or live in `--follow` mode) it prints a concise per-order summary/footer using the chosen display delimiter. This mode suppresses the usual prettified message output; use it to monitor order state across a stream or log.
+Track FIX order lifecycles and emit a summary instead of full decoded messages. When enabled, each application message that can be tied to an order flow is consumed into an order tracker (keyed by `OrderID`/`ClOrdID`/`OrigClOrdID`), updating state, quantities, prices, and events. Standard FIX session/admin messages such as `Heartbeat`, `Logon`, `Logout`, and `SequenceReset` are ignored in this mode, and application messages without a resolvable order identifier are skipped as non-order flow traffic. Invalid order-flow messages are still shown in the timeline and raw FIX list; in the timeline only the invalid suffix is red, while the original FIX `Text` value keeps its normal colour. Message-count tables are grouped so session/admin traffic is separated from business traffic, and business messages are bucketed into families such as order flow, quotes/pricing, and market data using an explicit `MsgType` taxonomy rather than label heuristics. On an interactive terminal, `--summary` now opens a built-in split pager by default; the left pane stays fixed and shows the current order block plus cumulative order/message counts from the start of the file through the bottom of the visible right-hand pane. Use `--paging=never` if you want the plain text summary written directly to stdout. At the end (or live in `--follow` mode) it prints a concise per-order summary/footer using the chosen display delimiter. This mode suppresses the usual prettified message output; use it to monitor order state across a stream or log.
 
 # Download it
 
 Check out the Repo's [Releases Page](https://github.com/stephenlclarke/fixdecoder_rs/releases) to see what versions are available for the computer you want to run it on.
 Unix release assets are published as `.tar.gz` archives so the executable bit is preserved when you download them; extract the archive before running `fixdecoder` or `pcap2fix`. Windows releases are published as `.exe` files.
+Windows executables embed the Marvin icon from `resources/icons/marvin.ico`. On macOS and Linux, the same source image is kept as `resources/icons/marvin.icns` and `resources/icons/marvin.png` for app-bundle or desktop-launcher packaging; standalone CLI binaries on those platforms do not have a portable built-in app icon format.
 
 # Build it
 
 Build it from source. This now requires `bash` version 5+ and a recent `Rust` toolchain (the project is tested with Rust 1.91+).
+Run `make icons` if you want to regenerate the tracked icon assets from `resources/icons/marvin.png`.
+Run `make message-groups` if you want to refresh the tracked `MsgType` bucket table from the official FIX Trading Community online specification pages.
 
 ```bash
 ❯ bash --version
@@ -203,6 +206,8 @@ Resolving deltas: 100% (201/201), done.
 ```
 
 Then build it. Debug version with clippy and code coverage
+
+If you want local Windows executables from macOS, `make build-windows` cross-compiles `fixdecoder.exe` and `pcap2fix.exe` for `x86_64-pc-windows-gnu`.
 
 ```bash
 ❯ make clean build scan coverage build-release

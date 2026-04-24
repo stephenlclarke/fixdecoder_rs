@@ -14,6 +14,7 @@ use std::sync::{Arc, RwLock};
 pub struct MessageDef {
     pub _name: String,
     pub _msg_type: String,
+    pub is_admin: bool,
     pub field_order: Vec<u32>,
     pub required: Vec<u32>,
     pub groups: HashMap<u32, GroupSpec>,
@@ -34,6 +35,7 @@ impl MessageDef {
         Self {
             _name: name.to_string(),
             _msg_type: msg_type.to_string(),
+            is_admin: false,
             field_order,
             required,
             groups,
@@ -501,6 +503,7 @@ impl<'a> MessageDefBuilder<'a> {
         MessageDef {
             _name: msg.name.clone(),
             _msg_type: msg.msg_type.clone(),
+            is_admin: msg.msg_cat.eq_ignore_ascii_case("admin"),
             field_order,
             required,
             groups,

@@ -6,6 +6,8 @@ use std::process::Command;
 // Capture build metadata (rustc version, git commit) at build time so the binary
 // can report it in --version even outside CI.
 fn main() {
+    println!("cargo:rerun-if-changed=resources/icons/marvin.ico");
+
     let rustc = rustc_version::version()
         .map(|v| v.to_string())
         .unwrap_or_else(|_| "unknown".to_string());
@@ -41,6 +43,8 @@ fn main() {
     println!(
         "cargo:warning=Building fixdecoder {version} (branch:{branch}, commit:{commit}) [rust:{rustc}]"
     );
+
+    embed_windows_icon("resources/icons/marvin.ico");
 }
 
 fn git_output(args: &[&str]) -> Option<String> {
@@ -56,4 +60,17 @@ fn git_output(args: &[&str]) -> Option<String> {
                 None
             }
         })
+}
+
+fn embed_windows_icon(icon_path: &str) {
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
+        return;
+    }
+
+    let mut resource = winresource::WindowsResource::new();
+    resource.set_icon(icon_path);
+
+    if let Err(err) = resource.compile() {
+        panic!("failed to compile Windows icon resource from {icon_path}: {err}");
+    }
 }

@@ -5,6 +5,7 @@ use crate::decoder::colours::{disable_colours, palette};
 use crate::decoder::display::{indent, pad_ansi, terminal_width, visible_width};
 use crate::decoder::fixparser::{FieldValue, parse_fix};
 use crate::decoder::layout::{BASE_INDENT, ENTRY_FIELD_INDENT, NAME_TEXT_OFFSET};
+use crate::decoder::message_groups::{MessageBucket, classify_message_bucket};
 use crate::decoder::summary::OrderSummary;
 #[cfg(test)]
 use crate::decoder::tag_lookup::MessageDef;
@@ -138,6 +139,7 @@ impl FileProcessingMode {
 pub struct MsgTypeCount {
     pub count: usize,
     pub label: Option<String>,
+    pub bucket: MessageBucket,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -662,7 +664,12 @@ fn merge_message_counts(
         let entry = target.entry(msg_type).or_default();
         entry.count += info.count;
         if entry.label.is_none() {
-            entry.label = info.label;
+            entry.label = info.label.clone();
+        }
+        if matches!(entry.bucket, MessageBucket::BusinessOther)
+            && !matches!(info.bucket, MessageBucket::BusinessOther)
+        {
+            entry.bucket = info.bucket;
         }
     }
 }
@@ -671,13 +678,74 @@ pub fn print_message_counts(ctx: &mut PrettifyContext) -> io::Result<()> {
     if ctx.message_counts.is_empty() || !ctx.counts_dirty {
         return Ok(());
     }
-    let mut entries: Vec<(&String, &MsgTypeCount)> = ctx.message_counts.iter().collect();
-    entries.sort_by(|a, b| a.0.cmp(b.0));
+    render_message_counts(ctx.out, &ctx.message_counts)?;
+    ctx.counts_dirty = false;
+    Ok(())
+}
+
+pub fn render_message_counts(
+    out: &mut dyn Write,
+    message_counts: &HashMap<String, MsgTypeCount>,
+) -> io::Result<()> {
+    if message_counts.is_empty() {
+        return Ok(());
+    }
+    let colours = palette();
+    let mut groups: Vec<(MessageBucket, Vec<(&String, &MsgTypeCount)>)> = Vec::new();
+    for (msg_type, info) in message_counts {
+        if let Some((_, entries)) = groups.iter_mut().find(|(bucket, _)| *bucket == info.bucket) {
+            entries.push((msg_type, info));
+        } else {
+            groups.push((info.bucket, vec![(msg_type, info)]));
+        }
+    }
+    groups.sort_by_key(|(bucket, _)| bucket.sort_key());
+    for (_, entries) in &mut groups {
+        entries.sort_by(|left, right| left.0.cmp(right.0));
+    }
+
+    writeln!(out, "{}Message Counts:{}", colours.title, colours.reset)?;
+
+    let mut business_heading_emitted = false;
+    for (index, (bucket, entries)) in groups.iter().enumerate() {
+        if index > 0 {
+            writeln!(out)?;
+        }
+        if bucket.is_business() && !business_heading_emitted {
+            writeln!(out, "{}Business:{}", colours.title, colours.reset)?;
+            business_heading_emitted = true;
+        }
+        render_message_count_group(out, *bucket, entries, bucket.is_business())?;
+    }
+
+    Ok(())
+}
+
+fn render_message_count_group(
+    out: &mut dyn Write,
+    bucket: MessageBucket,
+    entries: &[(&String, &MsgTypeCount)],
+    indent_group: bool,
+) -> io::Result<()> {
+    if entries.is_empty() {
+        return Ok(());
+    }
 
     let colours = palette();
+    let heading_indent = if indent_group { "  " } else { "" };
+    let row_indent = if indent_group { "    " } else { "  " };
+
+    writeln!(
+        out,
+        "{heading_indent}{}{}:{}",
+        colours.name,
+        bucket.heading(),
+        colours.reset
+    )?;
+
     let mut prepared = Vec::new();
     let mut max_label_width = 0usize;
-    for (mt, info) in &entries {
+    for (mt, info) in entries {
         let label_text = info.label.as_deref().unwrap_or("");
         let label_display = format!(
             "{}({}{}){}",
@@ -688,19 +756,25 @@ pub fn print_message_counts(ctx: &mut PrettifyContext) -> io::Result<()> {
         prepared.push((mt, info.count, label_display));
     }
 
-    let count_col_start = 2 + 3 + 3 + max_label_width + 3;
-    let header_pad = count_col_start.saturating_sub("Message Type".len());
-    writeln!(ctx.out, "Message Type{:<pad$}Count:", "", pad = header_pad)?;
+    let header_prefix_width = row_indent.len();
+    let count_col_start = header_prefix_width + 3 + 3 + max_label_width + 3;
+    let header_pad = count_col_start.saturating_sub(header_prefix_width + "Message Type".len());
+    writeln!(
+        out,
+        "{row_indent}Message Type{:<pad$}Count:",
+        "",
+        pad = header_pad
+    )?;
 
     for (mt, count, label_display) in prepared {
         let padded_label = pad_ansi(&label_display, max_label_width);
         writeln!(
-            ctx.out,
-            "  {}{:<3}{}   {}   {}{:>6}{}",
+            out,
+            "{row_indent}{}{:<3}{}   {}   {}{:>6}{}",
             colours.value, mt, colours.reset, padded_label, colours.value, count, colours.reset
         )?;
     }
-    ctx.counts_dirty = false;
+
     Ok(())
 }
 
@@ -1079,11 +1153,16 @@ fn track_message(msg: &str, dict: &FixTagLookup, ctx: &mut PrettifyContext) {
 
 fn record_msg_type(msg: &str, dict: &FixTagLookup, ctx: &mut PrettifyContext) {
     if let Some(mt) = extract_msg_type(msg) {
+        let label = dict.enum_description(35, &mt).map(|s| s.to_string());
         let entry = ctx.message_counts.entry(mt.clone()).or_default();
         entry.count += 1;
         if entry.label.is_none() {
-            entry.label = dict.enum_description(35, &mt).map(|s| s.to_string());
+            entry.label = label.clone();
         }
+        let msg_cat = dict
+            .message_def(&mt)
+            .map(|message| if message.is_admin { "admin" } else { "app" });
+        entry.bucket = classify_message_bucket(&mt, label.as_deref(), msg_cat);
         ctx.counts_dirty = true;
     }
 }
@@ -1306,7 +1385,6 @@ fn test_lookup_with_order(field_order: Vec<u32>) -> FixTagLookup {
 mod tests {
     use super::*;
     use crate::decoder::schema::FixDictionary;
-    use crate::decoder::tag_lookup::load_dictionary;
     use crate::decoder::validator;
     use crate::fix;
     use std::collections::HashMap;
@@ -1355,6 +1433,12 @@ mod tests {
 "#;
         let dict = FixDictionary::from_xml(xml).expect("tiny dictionary parses");
         FixTagLookup::from_dictionary(&dict, "TEST")
+    }
+
+    fn embedded_fix44_lookup() -> FixTagLookup {
+        let dict = FixDictionary::from_xml(fix::choose_embedded_xml("44"))
+            .expect("embedded FIX44 dictionary parses");
+        FixTagLookup::from_dictionary(&dict, "FIX44")
     }
 
     #[test]
@@ -1440,7 +1524,7 @@ mod tests {
         let _lock = TEST_GUARD.lock().unwrap();
         interrupt_flag().store(false, Ordering::Relaxed);
         let obfuscator = fix::create_obfuscator(false);
-        let lookup = load_dictionary(&format!("8=FIX.4.4{SOH}35=0{SOH}10=000{SOH}"));
+        let lookup = embedded_fix44_lookup();
         let order = lookup
             .message_def("0")
             .expect("heartbeat definition")
@@ -1457,7 +1541,7 @@ mod tests {
         let msg_without_checksum = format!("8=FIX.4.4{SOH}9={:03}{SOH}{}", body.len(), body);
         let checksum = validator::calculate_checksum(&format!("{msg_without_checksum}10=000{SOH}"));
         let msg = format!("{msg_without_checksum}10={checksum:03}{SOH}");
-        let dict = load_dictionary(&msg);
+        let dict = embedded_fix44_lookup();
         let errs = validator::validate_fix_message(&msg, &dict);
         assert!(
             errs.is_clean(),
@@ -1500,7 +1584,7 @@ mod tests {
         let _lock = TEST_GUARD.lock().unwrap();
         interrupt_flag().store(false, Ordering::Relaxed);
         let obfuscator = fix::create_obfuscator(false);
-        let lookup = load_dictionary(&format!("8=FIX.4.4{SOH}35=0{SOH}10=000{SOH}"));
+        let lookup = embedded_fix44_lookup();
         let order = lookup
             .message_def("0")
             .expect("heartbeat definition")
@@ -1620,6 +1704,79 @@ mod tests {
     }
 
     #[test]
+    fn render_message_counts_separates_admin_and_groups_business_messages() {
+        let _lock = TEST_GUARD.lock().unwrap();
+        disable_output_colours();
+
+        let mut counts = HashMap::new();
+        counts.insert(
+            "0".to_string(),
+            MsgTypeCount {
+                count: 2,
+                label: Some("HEARTBEAT".to_string()),
+                bucket: classify_message_bucket("0", Some("HEARTBEAT"), Some("admin")),
+            },
+        );
+        counts.insert(
+            "D".to_string(),
+            MsgTypeCount {
+                count: 1,
+                label: Some("NEW_ORDER_SINGLE".to_string()),
+                bucket: classify_message_bucket("D", Some("NEW_ORDER_SINGLE"), Some("app")),
+            },
+        );
+        counts.insert(
+            "8".to_string(),
+            MsgTypeCount {
+                count: 3,
+                label: Some("EXECUTION_REPORT".to_string()),
+                bucket: classify_message_bucket("8", Some("EXECUTION_REPORT"), Some("app")),
+            },
+        );
+        counts.insert(
+            "W".to_string(),
+            MsgTypeCount {
+                count: 4,
+                label: Some("MARKET_DATA_SNAPSHOT_FULL_REFRESH".to_string()),
+                bucket: classify_message_bucket(
+                    "W",
+                    Some("MARKET_DATA_SNAPSHOT_FULL_REFRESH"),
+                    Some("app"),
+                ),
+            },
+        );
+
+        let mut out = Vec::new();
+        render_message_counts(&mut out, &counts).expect("render counts");
+        let rendered = String::from_utf8(out).expect("utf8 output");
+
+        assert!(
+            rendered.contains("Message Counts:"),
+            "message count output should include a title: {rendered}"
+        );
+        assert!(
+            rendered.contains("Session/Admin:"),
+            "session messages should be separated: {rendered}"
+        );
+        assert!(
+            rendered.contains("Business:"),
+            "business grouping heading should be present: {rendered}"
+        );
+        assert!(
+            rendered.contains("Order Flow:"),
+            "order flow messages should be grouped together: {rendered}"
+        );
+        assert!(
+            rendered.contains("Market Data:"),
+            "market data messages should be grouped separately: {rendered}"
+        );
+        assert!(
+            rendered.find("Session/Admin:") < rendered.find("Business:"),
+            "session/admin messages should appear before business groups: {rendered}"
+        );
+    }
+
+    #[test]
     fn validation_inserts_missing_tags() {
         let _lock = TEST_GUARD.lock().unwrap();
         disable_output_colours();
@@ -1661,7 +1818,7 @@ mod tests {
         let _lock = TEST_GUARD.lock().unwrap();
         disable_output_colours();
         let msg = format!("8=FIX.4.4{SOH}9=005{SOH}35=0{SOH}10=000{SOH}");
-        let dict = load_dictionary(&msg);
+        let dict = embedded_fix44_lookup();
 
         let mut report = validator::ValidationReport::default();
         report
@@ -1825,7 +1982,7 @@ mod tests {
         let _lock = TEST_GUARD.lock().unwrap();
         disable_output_colours();
         let msg = format!("8=FIX.4.4{SOH}9=005{SOH}55=IBM{SOH}10=999{SOH}");
-        let dict = load_dictionary(&msg);
+        let dict = embedded_fix44_lookup();
 
         let pretty = prettify_with_report(&msg, &dict, None);
         let tags: Vec<u32> = pretty
@@ -1931,7 +2088,7 @@ mod tests {
     }
 
     fn valid_heartbeat_message() -> String {
-        let lookup = load_dictionary(&format!("8=FIX.4.4{SOH}35=0{SOH}10=000{SOH}"));
+        let lookup = embedded_fix44_lookup();
         let order = lookup
             .message_def("0")
             .expect("heartbeat definition")

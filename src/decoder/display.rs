@@ -8,6 +8,7 @@
 
 use crate::decoder::colours::{ColourPalette, palette};
 use crate::decoder::layout::{NEST_INDENT, TAG_WIDTH};
+use crate::decoder::message_groups::{MessageBucket, classify_message_bucket};
 use crate::decoder::schema::{
     ComponentNode, ContainerNode, ContainerNodeVisitor, Field, FieldNode, GroupNode, MessageNode,
     SchemaTree, Value, walk_container_nodes,
@@ -114,6 +115,10 @@ pub(crate) fn terminal_width() -> usize {
     }
 }
 
+pub(crate) fn rendered_char_width(ch: char) -> usize {
+    usize::from(!ch.is_control())
+}
+
 pub(crate) fn visible_width(text: &str) -> usize {
     let mut width = 0;
     let mut in_esc = false;
@@ -133,8 +138,9 @@ pub(crate) fn visible_width(text: &str) -> usize {
             i += 1;
             continue;
         }
-        width += 1;
-        i += 1;
+        let ch = text[i..].chars().next().unwrap_or_default();
+        width += rendered_char_width(ch);
+        i += ch.len_utf8();
     }
     width
 }
@@ -196,6 +202,18 @@ mod tests {
     fn visible_width_ignores_ansi_sequences() {
         let coloured = "\u{1b}[31mred\u{1b}[0m";
         assert_eq!(visible_width(coloured), 3);
+    }
+
+    #[test]
+    fn visible_width_ignores_control_characters() {
+        let fix_line = "8=FIX.4.4\u{0001}9=169\u{0001}35=D";
+        assert_eq!(visible_width(fix_line), 18);
+    }
+
+    #[test]
+    fn visible_width_counts_multibyte_glyphs_once() {
+        let display_line = "8=FIX.4.4␁9=169";
+        assert_eq!(visible_width(display_line), 15);
     }
 
     #[test]
@@ -388,6 +406,50 @@ mod tests {
             fields,
             components,
             messages,
+            version: "FIX 4.4".into(),
+            service_pack: "-".into(),
+        }
+    }
+
+    fn schema_with_bucketed_messages() -> SchemaTree {
+        use std::collections::BTreeMap;
+
+        let heartbeat = MessageNode {
+            name: "Heartbeat".into(),
+            msg_type: "0".into(),
+            msg_cat: "admin".into(),
+            fields: Vec::new(),
+            components: Vec::new(),
+            groups: Vec::new(),
+            entries: Vec::new(),
+        };
+        let new_order = MessageNode {
+            name: "NewOrderSingle".into(),
+            msg_type: "D".into(),
+            msg_cat: "app".into(),
+            fields: Vec::new(),
+            components: Vec::new(),
+            groups: Vec::new(),
+            entries: Vec::new(),
+        };
+        let market_data = MessageNode {
+            name: "MarketDataSnapshotFullRefresh".into(),
+            msg_type: "W".into(),
+            msg_cat: "app".into(),
+            fields: Vec::new(),
+            components: Vec::new(),
+            groups: Vec::new(),
+            entries: Vec::new(),
+        };
+
+        SchemaTree {
+            fields: BTreeMap::new(),
+            components: BTreeMap::new(),
+            messages: BTreeMap::from([
+                (heartbeat.name.clone(), heartbeat),
+                (new_order.name.clone(), new_order),
+                (market_data.name.clone(), market_data),
+            ]),
             version: "FIX 4.4".into(),
             service_pack: "-".into(),
         }
@@ -640,6 +702,47 @@ mod tests {
     }
 
     #[test]
+    fn grouped_message_listing_separates_admin_and_business_buckets() {
+        let schema = schema_with_bucketed_messages();
+        let mut out = Vec::new();
+        write_grouped_message_listing(&mut out, &schema, palette(), false).unwrap();
+        let rendered = String::from_utf8(out).unwrap();
+
+        assert!(
+            rendered.contains("Session/Admin:"),
+            "session heading missing: {rendered}"
+        );
+        assert!(
+            rendered.contains("Business:"),
+            "business heading missing: {rendered}"
+        );
+        assert!(
+            rendered.contains("Order Flow:"),
+            "order flow heading missing: {rendered}"
+        );
+        assert!(
+            rendered.contains("Market Data:"),
+            "market data heading missing: {rendered}"
+        );
+        assert!(
+            rendered.find("Session/Admin:") < rendered.find("Business:"),
+            "session/admin should appear before business buckets: {rendered}"
+        );
+        assert!(
+            rendered.contains("Heartbeat"),
+            "heartbeat listing should be present: {rendered}"
+        );
+        assert!(
+            rendered.contains("NewOrderSingle"),
+            "order flow listing should be present: {rendered}"
+        );
+        assert!(
+            rendered.contains("MarketDataSnapshotFullRefresh"),
+            "market data listing should be present: {rendered}"
+        );
+    }
+
+    #[test]
     fn visible_len_ignores_escape_sequences() {
         let text = "\u{1b}[33mhello\u{1b}[0m";
         assert_eq!(visible_len(text), 5);
@@ -861,6 +964,11 @@ fn tag_cell(
 }
 
 fn print_string_columns(items: &[DisplayCell]) -> io::Result<()> {
+    let mut stdout = io::stdout().lock();
+    print_string_columns_to(&mut stdout, items)
+}
+
+fn print_string_columns_to(out: &mut dyn Write, items: &[DisplayCell]) -> io::Result<()> {
     if items.is_empty() {
         return Ok(());
     }
@@ -870,17 +978,16 @@ fn print_string_columns(items: &[DisplayCell]) -> io::Result<()> {
     let cols = cmp::max(1, width / (max_len + 2));
     let rows = items.len().div_ceil(cols);
 
-    let mut stdout = io::stdout().lock();
     for row in 0..rows {
         for col in 0..cols {
             let idx = col * rows + row;
             if idx < items.len() {
-                write_with_padding(&mut stdout, items[idx].width, max_len + 2, |out| {
+                write_with_padding(out, items[idx].width, max_len + 2, |out| {
                     write!(out, "{}", items[idx].text)
                 })?;
             }
         }
-        writeln!(stdout)?;
+        writeln!(out)?;
     }
     Ok(())
 }
@@ -1278,13 +1385,8 @@ impl<'ctx, 'out, 'schema, W: Write> ContainerNodeVisitor<'schema>
 
 pub fn print_message_columns(schema: &SchemaTree) -> io::Result<()> {
     let colours = palette();
-    let mut entries: Vec<_> = schema.messages.values().collect();
-    entries.sort_by(|a, b| a.msg_type.cmp(&b.msg_type));
-    let cells: Vec<_> = entries
-        .iter()
-        .map(|msg| message_cell(msg, colours))
-        .collect();
-    print_string_columns(&cells)
+    let mut stdout = io::stdout().lock();
+    write_grouped_message_listing(&mut stdout, schema, colours, true)
 }
 
 /// Print component names in columns for quick scanning.
@@ -1303,15 +1405,83 @@ pub fn print_component_columns(schema: &SchemaTree) -> io::Result<()> {
 /// List all messages with MsgType and name, one per line.
 pub fn list_all_messages(schema: &SchemaTree) -> io::Result<()> {
     let colours = palette();
-    let mut entries: Vec<_> = schema.messages.values().collect();
-    entries.sort_by(|a, b| a.msg_type.cmp(&b.msg_type));
-
     let mut stdout = io::stdout().lock();
-    for msg in entries {
-        let cell = message_cell(msg, colours);
-        writeln!(stdout, "{}", cell.text)?;
+    write_grouped_message_listing(&mut stdout, schema, colours, false)
+}
+
+fn write_grouped_message_listing(
+    out: &mut dyn Write,
+    schema: &SchemaTree,
+    colours: ColourPalette,
+    column_mode: bool,
+) -> io::Result<()> {
+    let groups = grouped_message_entries(schema);
+    let mut business_heading_emitted = false;
+
+    for (index, (bucket, entries)) in groups.iter().enumerate() {
+        if index > 0 {
+            writeln!(out)?;
+        }
+        if bucket.is_business() && !business_heading_emitted {
+            writeln!(out, "{}Business:{}", colours.title, colours.reset)?;
+            business_heading_emitted = true;
+        }
+
+        let heading_indent = if bucket.is_business() { "  " } else { "" };
+        let row_indent = if bucket.is_business() { "    " } else { "  " };
+        writeln!(
+            out,
+            "{heading_indent}{}{}:{}",
+            colours.name,
+            bucket.heading(),
+            colours.reset
+        )?;
+
+        let cells: Vec<_> = entries
+            .iter()
+            .map(|msg| {
+                let cell = message_cell(msg, colours);
+                DisplayCell::new(format!("{row_indent}{}", cell.text))
+            })
+            .collect();
+
+        if column_mode {
+            print_string_columns_to(out, &cells)?;
+        } else {
+            for cell in cells {
+                writeln!(out, "{}", cell.text)?;
+            }
+        }
     }
+
     Ok(())
+}
+
+fn grouped_message_entries(schema: &SchemaTree) -> Vec<(MessageBucket, Vec<&MessageNode>)> {
+    let mut groups: Vec<(MessageBucket, Vec<&MessageNode>)> = Vec::new();
+
+    for message in schema.messages.values() {
+        let bucket = classify_message_bucket(
+            &message.msg_type,
+            Some(&message.name),
+            Some(&message.msg_cat),
+        );
+        if let Some((_, entries)) = groups
+            .iter_mut()
+            .find(|(candidate, _)| *candidate == bucket)
+        {
+            entries.push(message);
+        } else {
+            groups.push((bucket, vec![message]));
+        }
+    }
+
+    groups.sort_by_key(|(bucket, _)| bucket.sort_key());
+    for (_, entries) in &mut groups {
+        entries.sort_by(|left, right| left.msg_type.cmp(&right.msg_type));
+    }
+
+    groups
 }
 
 /// List all components by name, one per line.

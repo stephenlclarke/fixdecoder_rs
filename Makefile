@@ -3,7 +3,7 @@
 SHELL := /bin/bash
 CI_SCRIPT := ./ci/ci_helper.sh
 
-.PHONY: setup-environment prepare build build-release scan coverage sonar release clean help
+.PHONY: setup-environment prepare icons message-groups build build-release build-windows scan coverage sonar release clean help
 
 setup-environment:
 	@bash -lc 'source $(CI_SCRIPT) && cmd_setup_environment'
@@ -12,11 +12,29 @@ prepare:
 	@bash -lc 'source $(CI_SCRIPT) && cmd_setup_environment && ensure_build_metadata && download_fix_specs'
 	@cargo run --quiet --bin generate_sensitive_tags >/dev/null
 
+icons:
+	@bash -lc './ci/generate_icons.sh'
+
+message-groups:
+	@python3 ./ci/generate_message_groups.py
+
 build: prepare
 	@bash -lc 'source $(CI_SCRIPT) && ensure_build_metadata && cargo fmt --all && cargo build --workspace'
 
 build-release: prepare
 	@bash -lc 'source $(CI_SCRIPT) && ensure_build_metadata && cargo fmt --all && cargo build --workspace --release'
+
+build-windows: prepare
+	@bash -lc '\
+		source $(CI_SCRIPT) && \
+		ensure_build_metadata && \
+		ensure_rustup_target x86_64-pc-windows-gnu && \
+		ensure_windows_cross_tools && \
+		cargo fmt --all && \
+		RC_x86_64_pc_windows_gnu=x86_64-w64-mingw32-windres \
+		CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc \
+		cargo_with_rustup build --release --workspace --target x86_64-pc-windows-gnu \
+	'
 
 scan: prepare
 	@bash -lc '\
@@ -120,8 +138,11 @@ help:
 	@echo "Available targets:"
 	@echo "  setup-environment  → ensure toolchain + coverage tools"
 	@echo "  prepare            → setup + build metadata + download FIX specs + regenerate generators"
+	@echo "  icons              → regenerate Windows/macOS icon assets from resources/icons/marvin.png"
+	@echo "  message-groups     → refresh the explicit MsgType bucket table from official FIX pages"
 	@echo "  build              → fmt + cargo build (debug)"
 	@echo "  build-release      → fmt + cargo build --release"
+	@echo "  build-windows      → fmt + rustup cargo build --release --target x86_64-pc-windows-gnu"
 	@echo "  scan               → fmt --check + clippy (+ cargo-audit when available)"
 	@echo "  coverage           → cargo llvm-cov --cobertura"
 	@echo "  sonar              → sonar-scanner (requires coverage.xml)"

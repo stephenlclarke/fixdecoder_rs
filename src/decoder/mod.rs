@@ -5,9 +5,11 @@ pub mod colours;
 pub mod display;
 pub mod fixparser;
 pub mod layout;
+pub mod message_groups;
 pub mod prettifier;
 pub mod schema;
 pub mod summary;
+pub mod summary_pager;
 pub mod tag_lookup;
 pub mod validator;
 

@@ -22,7 +22,7 @@ use decoder::{
     display_component, display_message, list_all_components, list_all_messages, list_all_tags,
     prettify_files, print_component_columns, print_message_columns, print_tag_details,
     print_tags_in_columns, register_fix_dictionary, schema::SchemaTree, summary::OrderSummary,
-    tag_lookup,
+    summary_pager, tag_lookup,
 };
 use std::collections::HashMap;
 use std::env;
@@ -282,29 +282,53 @@ fn run() -> Result<i32> {
 
     let obfuscator = fix::create_obfuscator(opts.secret);
     let files = resolve_input_files(&opts);
+    let summary_pager_active = should_use_summary_pager(&opts, stdout_is_terminal);
 
     let mut summary = opts.summary.then(|| OrderSummary::new(opts.delimiter));
     let fix_override = opts
         .fix_from_user
         .then(|| normalise_fix_key(&opts.fix_version))
         .flatten();
-    let mut output = create_output_writer(&opts, stdout_is_terminal)?;
     let mut stderr = io::stderr();
-    let code = {
+    let code = if summary_pager_active {
+        let mut sink = io::sink();
         let mut ctx = build_context(
             &obfuscator,
             &mut summary,
             fix_override.as_deref(),
             &opts,
             stdout_is_terminal,
-            &mut output,
+            &mut sink,
             &mut stderr,
         );
         prettify_files(&files, &mut ctx)
+    } else {
+        let mut output = create_output_writer(&opts, stdout_is_terminal)?;
+        let code = {
+            let mut ctx = build_context(
+                &obfuscator,
+                &mut summary,
+                fix_override.as_deref(),
+                &opts,
+                stdout_is_terminal,
+                &mut output,
+                &mut stderr,
+            );
+            prettify_files(&files, &mut ctx)
+        };
+
+        warn_on_override_fallback(&mut stderr);
+        output.finish()?;
+        return Ok(final_exit_code(code));
     };
 
     warn_on_override_fallback(&mut stderr);
-    output.finish()?;
+    if let Some(tracker) = summary.as_ref() {
+        summary_pager::run(summary_pager::SummaryPagerContent {
+            sections: tracker.build_paged_sections()?,
+            message_counts: tracker.paged_message_counts(),
+        })?;
+    }
 
     Ok(final_exit_code(code))
 }
@@ -457,6 +481,13 @@ fn create_output_writer(opts: &CliOptions, stdout_is_terminal: bool) -> Result<A
 
     let command = resolve_pager_command(opts.pager.as_deref(), opts.paging, opts.nowrap);
     PagerWriter::new(&command, opts.nowrap).map(AppWriter::Pager)
+}
+
+fn should_use_summary_pager(opts: &CliOptions, stdout_is_terminal: bool) -> bool {
+    opts.summary
+        && opts
+            .paging
+            .should_use_pager(stdout_is_terminal, opts.follow)
 }
 
 fn resolve_pager_command(explicit: Option<&str>, mode: PagingMode, nowrap: bool) -> String {
@@ -854,6 +885,13 @@ impl CliOptions {
 
         let xml_paths = merged_values(matches, default_matches, "xml");
 
+        let summary = merged_flag(matches, default_matches, "summary");
+        let paging = match selected_value(matches, default_matches, "paging") {
+            Some(value) => parse_paging(Some(value))?,
+            None if summary => PagingMode::Always,
+            None => PagingMode::Auto,
+        };
+
         let files: Vec<String> = matches
             .get_many::<String>("files")
             .map(|vals| vals.map(|v| v.to_string()).collect())
@@ -885,10 +923,10 @@ impl CliOptions {
             validate: merged_flag(matches, default_matches, "validate"),
             colour: parse_colour(selected_value(matches, default_matches, "colour"))?,
             style: resolve_output_style(matches, default_matches, std::io::stdout().is_terminal())?,
-            paging: parse_paging(selected_value(matches, default_matches, "paging"))?,
+            paging,
             pager: selected_value(matches, default_matches, "pager").cloned(),
             nowrap: merged_flag(matches, default_matches, "nowrap"),
-            summary: merged_flag(matches, default_matches, "summary"),
+            summary,
             follow: merged_flag(matches, default_matches, "follow"),
             files,
             delimiter: parse_delimiter(selected_value(matches, default_matches, "delimiter"))?,
@@ -1761,6 +1799,24 @@ mod tests {
             parse_paging(Some(&"never".to_string())).unwrap(),
             PagingMode::Never
         );
+    }
+
+    #[test]
+    fn summary_defaults_to_paging_always() {
+        let matches = build_cli()
+            .try_get_matches_from(["fixdecoder", "--summary"])
+            .expect("parse summary");
+        let opts = CliOptions::from_matches(&matches, None).expect("build opts");
+        assert_eq!(opts.paging, PagingMode::Always);
+    }
+
+    #[test]
+    fn explicit_paging_overrides_summary_default() {
+        let matches = build_cli()
+            .try_get_matches_from(["fixdecoder", "--summary", "--paging=never"])
+            .expect("parse summary paging");
+        let opts = CliOptions::from_matches(&matches, None).expect("build opts");
+        assert_eq!(opts.paging, PagingMode::Never);
     }
 
     #[test]

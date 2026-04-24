@@ -673,10 +673,7 @@ fn store_future_segment(flow: &mut FlowState, seq: u32, payload: &[u8]) {
 }
 
 fn drain_pending_segments(flow: &mut FlowState) {
-    loop {
-        let Some((&seq, _)) = flow.pending.first_key_value() else {
-            break;
-        };
+    while let Some((&seq, _)) = flow.pending.first_key_value() {
         let expected = flow.next_seq.unwrap_or(seq);
         if seq > expected {
             break;

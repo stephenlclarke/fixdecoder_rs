@@ -246,6 +246,50 @@ function ensure_build_metadata() {
   metadata_ready=true
 }
 
+function ensure_rustup_target() {
+  local target="$1"
+  local rustup_rustc toolchain_root
+  if rustup target list --installed | grep -qx "${target}"; then
+    return
+  fi
+  rustup_rustc="$(rustup which rustc 2>/dev/null || true)"
+  if [[ -n "${rustup_rustc}" ]]; then
+    toolchain_root="$(cd "$(dirname "${rustup_rustc}")/.." && pwd)"
+    if [[ -d "${toolchain_root}/lib/rustlib/${target}" ]]; then
+      return
+    fi
+  fi
+
+  log ">> Installing Rust target ${target}"
+  rustup target add "${target}"
+}
+
+function active_rustup_toolchain() {
+  rustup show active-toolchain | awk '{print $1}'
+}
+
+function cargo_with_rustup() {
+  local toolchain
+  toolchain="$(active_rustup_toolchain)"
+  if [[ -z "${toolchain}" ]]; then
+    echo "Unable to determine the active rustup toolchain." >&2
+    exit 1
+  fi
+
+  RUSTC="$(rustup which rustc)" rustup run "${toolchain}" cargo "$@"
+}
+
+function ensure_windows_cross_tools() {
+  if ! command -v x86_64-w64-mingw32-gcc >/dev/null 2>&1; then
+    echo "x86_64-w64-mingw32-gcc is required for make build-windows." >&2
+    exit 1
+  fi
+  if ! command -v x86_64-w64-mingw32-windres >/dev/null 2>&1; then
+    echo "x86_64-w64-mingw32-windres is required for Windows icon resources." >&2
+    exit 1
+  fi
+}
+
 # This script is intended to be sourced by the Makefile or ad-hoc bash
 # invocations. Call helpers such as `cmd_setup_environment`, `ensure_build_metadata`,
 # `download_fix_specs`, `ensure_sonar_scanner`, and `ensure_sonar_token` from targets.

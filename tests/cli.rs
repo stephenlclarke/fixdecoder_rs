@@ -88,6 +88,228 @@ fn summary_mode_outputs_order_summary() {
 }
 
 #[test]
+fn summary_mode_ignores_admin_messages() {
+    let mut file = NamedTempFile::new().expect("temp file");
+    let heartbeat = valid_fix_message(
+        "FIX.4.4",
+        &[("35", "0"), ("49", "SENDER"), ("56", "TARGET")],
+    );
+    let market_data = valid_fix_message(
+        "FIX.4.4",
+        &[("35", "W"), ("55", "EUR/USD"), ("268", "1"), ("269", "0")],
+    );
+    let exec_report = valid_fix_message(
+        "FIX.4.4",
+        &[
+            ("35", "8"),
+            ("37", "O1"),
+            ("11", "C1"),
+            ("150", "0"),
+            ("39", "0"),
+        ],
+    );
+    write!(file, "{heartbeat}{market_data}{exec_report}").expect("write temp");
+
+    let assert = cargo_bin_cmd!("fixdecoder")
+        .args(["--fix=44", "--summary"])
+        .arg(file.path())
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+
+    assert!(
+        stdout.contains("Execution Report") || stdout.contains("EXECUTION"),
+        "summary should still include application traffic: {stdout}"
+    );
+    assert!(
+        !stdout.contains("Heartbeat"),
+        "summary should ignore FIX admin traffic: {stdout}"
+    );
+    assert!(
+        !stdout.contains("UNKNOWN-"),
+        "summary should ignore non-order application traffic too: {stdout}"
+    );
+}
+
+#[test]
+fn summary_mode_orders_events_and_collapses_duplicate_order_flow_messages() {
+    let mut file = NamedTempFile::new().expect("temp file");
+    let partial = valid_fix_message(
+        "FIX.4.4",
+        &[
+            ("35", "8"),
+            ("52", "20250519-15:07:20.036"),
+            ("11", "C1"),
+            ("41", "C1"),
+            ("150", "F"),
+            ("39", "1"),
+            ("32", "1000000"),
+            ("31", "19.391"),
+            ("151", "2000000"),
+            ("14", "1000000"),
+            ("6", "19.391"),
+        ],
+    );
+    let filled = valid_fix_message(
+        "FIX.4.4",
+        &[
+            ("35", "8"),
+            ("52", "20250519-15:07:20.106"),
+            ("11", "C1"),
+            ("41", "C1"),
+            ("150", "F"),
+            ("39", "2"),
+            ("32", "2000000"),
+            ("31", "19.391"),
+            ("151", "0"),
+            ("14", "3000000"),
+            ("6", "19.391"),
+        ],
+    );
+    let new_order = valid_fix_message(
+        "FIX.4.4",
+        &[
+            ("35", "D"),
+            ("52", "20250519-15:04:03.540"),
+            ("60", "20250519-11:04:03.540"),
+            ("11", "C1"),
+            ("55", "USD/MXN"),
+            ("54", "2"),
+            ("38", "3000000"),
+            ("44", "19.391000"),
+            ("59", "5"),
+        ],
+    );
+    let accepted = valid_fix_message(
+        "FIX.4.4",
+        &[
+            ("35", "8"),
+            ("52", "20250519-15:04:03.541"),
+            ("11", "C1"),
+            ("41", "C1"),
+            ("150", "0"),
+            ("39", "0"),
+            ("151", "3000000"),
+            ("14", "0"),
+            ("6", "0"),
+            ("58", "Accepted order"),
+        ],
+    );
+
+    write!(
+        file,
+        "{partial}{filled}{new_order}{accepted}{partial}{filled}"
+    )
+    .expect("write temp");
+
+    let assert = cargo_bin_cmd!("fixdecoder")
+        .args(["--fix=44", "--summary"])
+        .arg(file.path())
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+
+    assert!(
+        stdout.contains("[New -> Partially Filled -> Filled]"),
+        "summary header should be chronological and skip the synthetic unknown: {stdout}"
+    );
+    assert_eq!(
+        stdout.matches("NEW_ORDER_SINGLE [C1]").count(),
+        1,
+        "duplicate order messages should collapse in the timeline: {stdout}"
+    );
+    assert_eq!(
+        stdout.matches("35=D").count(),
+        1,
+        "duplicate raw FIX messages should collapse too: {stdout}"
+    );
+}
+
+#[test]
+fn summary_mode_highlights_invalid_order_messages_and_surfaces_reason() {
+    let mut file = NamedTempFile::new().expect("temp file");
+    let invalid_new = valid_fix_message(
+        "FIX.4.4",
+        &[
+            ("49", "SenderCompID0002"),
+            ("56", "TargetCompID0001"),
+            ("34", "2146"),
+            ("52", "20250519-15:07:21.162"),
+            ("37", "1747588115027927786:000000004"),
+            ("11", "12-193-1747602389"),
+            ("41", "12-193-1747602389"),
+            ("17", "1747588115027927786:0000000044"),
+            ("150", "0"),
+            ("39", "0"),
+            ("64", "20250521"),
+            ("55", "USD/MXN"),
+            ("54", "1"),
+            ("38", "3000000"),
+            ("40", "2"),
+            ("44", "19.38"),
+            ("151", "3000000"),
+            ("14", "0"),
+            ("6", "0"),
+            ("58", "Accepted order"),
+        ],
+    );
+    let filled = valid_fix_message(
+        "FIX.4.4",
+        &[
+            ("35", "8"),
+            ("49", "SenderCompID0002"),
+            ("56", "TargetCompID0001"),
+            ("34", "2156"),
+            ("52", "20250519-15:11:05.312"),
+            ("37", "1747588115027927786:000000004"),
+            ("11", "12-193-1747602389"),
+            ("41", "12-193-1747602389"),
+            ("17", "1747588115027927786:0000000047"),
+            ("150", "F"),
+            ("39", "2"),
+            ("64", "20250521"),
+            ("55", "USD/MXN"),
+            ("54", "1"),
+            ("38", "3000000"),
+            ("40", "2"),
+            ("44", "19.38"),
+            ("32", "1000000"),
+            ("31", "19.38"),
+            ("151", "0"),
+            ("14", "3000000"),
+            ("6", "19.38"),
+        ],
+    );
+    write!(file, "{invalid_new}{filled}").expect("write temp");
+
+    let assert = cargo_bin_cmd!("fixdecoder")
+        .args(["--fix=44", "--summary", "--colour=yes"])
+        .arg(file.path())
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+
+    assert!(
+        stdout.contains("Invalid: Missing required tag 35 (MsgType)"),
+        "invalid summary rows should explain why the message failed validation: {stdout}"
+    );
+    assert!(
+        stdout.contains(
+            "Accepted order\u{001b}[0m | \u{001b}[31mInvalid: Missing required tag 35 (MsgType)\u{001b}[0m"
+        ),
+        "only the invalid timeline text should be highlighted in red: {stdout}"
+    );
+    assert!(
+        stdout.contains("\u{001b}[31m-\u{001b}[0m ["),
+        "the invalid timeline message cell should keep its original formatting: {stdout}"
+    );
+    assert!(
+        stdout.contains("\u{001b}[31m8=FIX.4.4"),
+        "invalid raw FIX messages should be highlighted in red: {stdout}"
+    );
+}
+
+#[test]
 fn override_is_honoured_with_fallback() {
     let soh = '\u{0001}';
     let msg = format!("8=FIXT.1.1{soh}9=005{soh}35=0{soh}1128=8{soh}10=000{soh}\n");
@@ -258,13 +480,26 @@ fn message_listing_works_in_plain_and_column_modes() {
         .args(["--fix=44", "--message"])
         .assert()
         .success()
-        .stdout(contains("Heartbeat").and(contains("ExecutionReport")));
+        .stdout(
+            contains("Session/Admin:")
+                .and(contains("Business:"))
+                .and(contains("Order Flow:"))
+                .and(contains("Market Data:"))
+                .and(contains("Heartbeat"))
+                .and(contains("ExecutionReport")),
+        );
 
     cargo_bin_cmd!("fixdecoder")
         .args(["--fix=44", "--message", "--column"])
         .assert()
         .success()
-        .stdout(contains("Heartbeat").and(contains("Logon")));
+        .stdout(
+            contains("Session/Admin:")
+                .and(contains("Business:"))
+                .and(contains("Heartbeat"))
+                .and(contains("Logon"))
+                .and(contains("ExecutionReport")),
+        );
 }
 
 #[test]

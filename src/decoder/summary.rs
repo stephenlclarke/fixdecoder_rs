@@ -4,11 +4,13 @@
 use crate::decoder::colours::palette;
 use crate::decoder::display::{pad_ansi, visible_width};
 use crate::decoder::fixparser::parse_fix;
+use crate::decoder::message_groups::{MessageBucket, classify_message_bucket};
 #[cfg(test)]
 use crate::decoder::tag_lookup::load_dictionary_with_override;
 use crate::decoder::tag_lookup::{FixTagLookup, clear_override_cache_for};
+use crate::decoder::validator;
 use chrono::{Datelike, Duration, NaiveDate};
-use std::collections::{HashMap, hash_map::Entry};
+use std::collections::{HashMap, HashSet, hash_map::Entry};
 use std::io::Write;
 
 /// Captures FIX order lifecycles while streaming messages so a concise summary
@@ -19,11 +21,13 @@ pub struct OrderSummary {
     aliases: HashMap<String, String>,
     unknown_counter: usize,
     completed: Vec<OrderRecord>,
+    message_log: Vec<MessageCountEvent>,
     total_orders: usize,
     terminal_orders: usize,
     footer_width: usize,
     fix_override_key: Option<String>,
     display_delimiter: char,
+    next_sequence: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -63,15 +67,18 @@ struct OrderRecord {
     last_qty: Option<String>,
     bn_seen: bool,
     bn_exec_amt: Option<String>,
+    last_sequence: usize,
     events: Vec<OrderEvent>,
-    messages: Vec<String>,
+    messages: Vec<OrderMessage>,
 }
 
 #[derive(Debug, Clone)]
 struct OrderEvent {
+    sequence: usize,
     time: Option<String>,
     msg_type: Option<String>,
     msg_type_desc: Option<String>,
+    invalid_reason: Option<String>,
     exec_type: Option<String>,
     ord_status: Option<String>,
     exec_ack_status: Option<String>,
@@ -84,6 +91,39 @@ struct OrderEvent {
     text: Option<String>,
     cl_ord_id: Option<String>,
     orig_cl_ord_id: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct OrderMessage {
+    sequence: usize,
+    time: Option<String>,
+    fingerprint: String,
+    display: String,
+    invalid_reason: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SummaryPagerMessageCount {
+    pub msg_type: String,
+    pub label: Option<String>,
+    pub count: usize,
+    pub bucket: MessageBucket,
+}
+
+#[derive(Debug, Clone)]
+pub struct SummaryPagerSection {
+    pub summary: String,
+    pub detail: String,
+    pub terminal: bool,
+    pub message_counts: Vec<SummaryPagerMessageCount>,
+}
+
+#[derive(Debug, Clone)]
+struct MessageCountEvent {
+    sequence: usize,
+    msg_type: String,
+    label: Option<String>,
+    bucket: MessageBucket,
 }
 
 impl OrderSummary {
@@ -122,6 +162,20 @@ impl OrderSummary {
         let order_id = map.get(&37).cloned();
         let cl_ord_id = map.get(&11).cloned();
         let orig_cl_ord_id = map.get(&41).cloned();
+        let sequence = self.next_sequence;
+        self.next_sequence += 1;
+        self.record_message_type(sequence, map.get(&35).map(String::as_str), dict);
+
+        if should_ignore_summary_message(
+            map.get(&35).map(String::as_str),
+            order_id.as_deref(),
+            cl_ord_id.as_deref(),
+            orig_cl_ord_id.as_deref(),
+            dict,
+            &self.aliases,
+        ) {
+            return;
+        }
 
         let key = self.resolve_key(
             order_id.as_deref(),
@@ -150,13 +204,15 @@ impl OrderSummary {
             map.get(&11).cloned(),
             map.get(&41).cloned(),
         );
+        record.last_sequence = sequence;
         record.absorb_fields(&map, dict, map.get(&35).map(|s| s.as_str()));
 
-        let event = OrderEvent::from_fields(&map, dict);
+        let invalid_reason = validation_reason(msg, dict);
+        let event = OrderEvent::from_fields(&map, dict, invalid_reason, sequence);
+        let message =
+            OrderMessage::from_event(&event, display_with_delimiter(msg, self.display_delimiter));
         record.events.push(event);
-        record
-            .messages
-            .push(display_with_delimiter(msg, self.display_delimiter));
+        record.messages.push(message);
 
         if record.is_terminal() {
             self.completed.push(record.clone());
@@ -167,31 +223,15 @@ impl OrderSummary {
 
     /// Render and clear any completed orders to allow streaming output in summary-only mode.
     pub fn render(&self, out: &mut dyn Write) -> std::io::Result<()> {
-        let colours = palette();
-        let mut keys: Vec<&String> = self.orders.keys().collect();
-        keys.sort();
-        let open = self.orders.len();
-        let total = self.total_orders;
-
         if self.footer_width > 0 {
             writeln!(out, "\r{}", " ".repeat(self.footer_width))?;
         }
 
-        for record in &self.completed {
-            self.render_record(out, record)?;
-            self.render_messages(out, record)?;
-        }
-
-        for key in keys {
-            let record = &self.orders[key];
+        for record in self.ordered_records() {
             self.render_record(out, record)?;
         }
 
-        let res = writeln!(
-            out,
-            "{}Order Summary{} ({} open, {} total, to fill: {}/{})\n",
-            colours.title, colours.reset, open, total, open, total
-        );
+        let res = self.render_overview(out);
         if !self.completed.is_empty() {
             self.clear_override_cache();
         }
@@ -208,7 +248,6 @@ impl OrderSummary {
         }
         for record in &self.completed {
             self.render_record(out, record)?;
-            self.render_messages(out, record)?;
         }
         self.clear_override_cache();
         self.completed.clear();
@@ -237,8 +276,13 @@ impl OrderSummary {
         }
         let colours = palette();
         writeln!(out, "    {}Raw FIX messages:{}", colours.tag, colours.reset)?;
-        for msg in &record.messages {
-            writeln!(out, "      {}{}{}", colours.line, msg, colours.reset)?;
+        for msg in record.ordered_messages() {
+            let line_colour = if msg.invalid_reason.is_some() {
+                colours.error
+            } else {
+                colours.line
+            };
+            writeln!(out, "      {}{}{}", line_colour, msg.display, colours.reset)?;
         }
         writeln!(out)?;
         Ok(())
@@ -251,16 +295,56 @@ impl OrderSummary {
     }
 
     fn render_record(&self, out: &mut dyn Write, record: &OrderRecord) -> std::io::Result<()> {
+        self.render_record_summary(out, record)?;
+        writeln!(out)?;
+        self.render_record_detail(out, record)
+    }
+
+    pub fn render_overview(&self, out: &mut dyn Write) -> std::io::Result<()> {
         let colours = palette();
-        render_record_header(out, record, colours)?;
-        let (headers, values) = build_summary_row(record, colours);
-        render_table_row(out, &headers, &values)?;
+        let open = self.orders.len();
+        let total = self.total_orders;
+        writeln!(
+            out,
+            "{}Order Summary{} ({} open, {} total, to fill: {}/{})",
+            colours.title, colours.reset, open, total, open, total
+        )
+    }
 
-        writeln!(out)?;
-        render_timeline(out, record, colours)?;
-        writeln!(out)?;
+    pub fn build_paged_sections(&self) -> std::io::Result<Vec<SummaryPagerSection>> {
+        let mut cumulative_counts = HashMap::new();
+        let mut next_message = 0usize;
+        let mut sections = Vec::new();
+        for record in self.paged_records() {
+            while let Some(message) = self.message_log.get(next_message) {
+                if message.sequence > record.last_sequence {
+                    break;
+                }
+                accumulate_message_count(&mut cumulative_counts, message);
+                next_message += 1;
+            }
+            let mut summary = Vec::new();
+            self.render_current_message_summary(&mut summary, record)?;
+            let mut detail = Vec::new();
+            self.render_record_detail(&mut detail, record)?;
+            sections.push(SummaryPagerSection {
+                summary: String::from_utf8(summary).unwrap_or_default(),
+                detail: String::from_utf8(detail).unwrap_or_default(),
+                terminal: record.is_terminal(),
+                message_counts: sort_summary_message_counts(
+                    cumulative_counts.values().cloned().collect(),
+                ),
+            });
+        }
+        Ok(sections)
+    }
 
-        Ok(())
+    pub fn paged_message_counts(&self) -> Vec<SummaryPagerMessageCount> {
+        let mut counts = HashMap::new();
+        for message in &self.message_log {
+            accumulate_message_count(&mut counts, message);
+        }
+        sort_summary_message_counts(counts.into_values().collect())
     }
 
     fn resolve_key(
@@ -294,6 +378,190 @@ impl OrderSummary {
             self.aliases.entry(id).or_insert_with(|| key.to_string());
         }
     }
+
+    fn ordered_records(&self) -> Vec<&OrderRecord> {
+        let mut records: Vec<&OrderRecord> = self.completed.iter().collect();
+        let mut keys: Vec<&String> = self.orders.keys().collect();
+        keys.sort();
+        for key in keys {
+            records.push(&self.orders[key]);
+        }
+        records
+    }
+
+    fn paged_records(&self) -> Vec<&OrderRecord> {
+        let mut records = self.ordered_records();
+        records.sort_by(|left, right| {
+            left.last_sequence
+                .cmp(&right.last_sequence)
+                .then_with(|| left.display_id().cmp(&right.display_id()))
+        });
+        records
+    }
+
+    fn render_record_summary(
+        &self,
+        out: &mut dyn Write,
+        record: &OrderRecord,
+    ) -> std::io::Result<()> {
+        let colours = palette();
+        render_record_header(out, record, colours)?;
+        let (headers, values) = build_summary_row(record, colours);
+        render_table_row(out, &headers, &values)
+    }
+
+    fn render_record_detail(
+        &self,
+        out: &mut dyn Write,
+        record: &OrderRecord,
+    ) -> std::io::Result<()> {
+        let colours = palette();
+        render_record_header(out, record, colours)?;
+        writeln!(out)?;
+        render_timeline(out, record, colours)?;
+        writeln!(out)?;
+        self.render_messages(out, record)
+    }
+
+    fn render_current_message_summary(
+        &self,
+        out: &mut dyn Write,
+        record: &OrderRecord,
+    ) -> std::io::Result<()> {
+        let colours = palette();
+        writeln!(out, "{}Current Message{}", colours.title, colours.reset)?;
+
+        let (headers, values) = build_summary_row(record, colours);
+        let mut rows = vec![
+            (
+                "Order".to_string(),
+                format!("{}{}{}", colours.file, record.display_id(), colours.reset),
+            ),
+            (
+                "State".to_string(),
+                format!(
+                    "{}{}{}",
+                    colours.name,
+                    flow_label(&record.state_path()),
+                    colours.reset
+                ),
+            ),
+            (
+                "Instrument".to_string(),
+                colour_instrument(record.display_instrument()),
+            ),
+        ];
+        rows.extend(
+            headers
+                .into_iter()
+                .zip(values)
+                .map(|(label, value)| (label.to_string(), value)),
+        );
+
+        let label_width = rows.iter().map(|(label, _)| label.len()).max().unwrap_or(0) + 1;
+        for (label, value) in rows {
+            let label_text = format!("{}{}:{}", colours.name, label, colours.reset);
+            writeln!(out, "  {} {}", pad_ansi(&label_text, label_width), value)?;
+        }
+
+        Ok(())
+    }
+
+    fn record_message_type(
+        &mut self,
+        sequence: usize,
+        msg_type: Option<&str>,
+        dict: &FixTagLookup,
+    ) {
+        let Some(msg_type) = msg_type else {
+            return;
+        };
+        let label = dict.enum_description(35, msg_type).map(|d| d.to_string());
+        let msg_cat = dict
+            .message_def(msg_type)
+            .map(|message| if message.is_admin { "admin" } else { "app" });
+        self.message_log.push(MessageCountEvent {
+            sequence,
+            msg_type: msg_type.to_string(),
+            label: label.clone(),
+            bucket: classify_message_bucket(msg_type, label.as_deref(), msg_cat),
+        });
+    }
+}
+
+fn accumulate_message_count(
+    counts: &mut HashMap<String, SummaryPagerMessageCount>,
+    message: &MessageCountEvent,
+) {
+    let entry =
+        counts
+            .entry(message.msg_type.clone())
+            .or_insert_with(|| SummaryPagerMessageCount {
+                msg_type: message.msg_type.clone(),
+                label: message.label.clone(),
+                count: 0,
+                bucket: message.bucket,
+            });
+    entry.count += 1;
+    if entry.label.is_none() {
+        entry.label = message.label.clone();
+    }
+    if matches!(entry.bucket, MessageBucket::BusinessOther)
+        && !matches!(message.bucket, MessageBucket::BusinessOther)
+    {
+        entry.bucket = message.bucket;
+    }
+}
+
+fn sort_summary_message_counts(
+    mut counts: Vec<SummaryPagerMessageCount>,
+) -> Vec<SummaryPagerMessageCount> {
+    counts.sort_by(|left, right| {
+        left.bucket
+            .sort_key()
+            .cmp(&right.bucket.sort_key())
+            .then_with(|| left.msg_type.cmp(&right.msg_type))
+    });
+    counts
+}
+
+fn should_ignore_summary_message(
+    msg_type: Option<&str>,
+    order_id: Option<&str>,
+    cl_ord_id: Option<&str>,
+    orig_cl_ord_id: Option<&str>,
+    dict: &FixTagLookup,
+    aliases: &HashMap<String, String>,
+) -> bool {
+    let is_admin = msg_type
+        .and_then(|msg_type| dict.message_def(msg_type).map(|message| message.is_admin))
+        .unwrap_or(matches!(
+            msg_type,
+            Some("0" | "1" | "2" | "3" | "4" | "5" | "A" | "n")
+        ));
+    if is_admin {
+        return true;
+    }
+
+    order_id.is_none()
+        && cl_ord_id.is_none()
+        && orig_cl_ord_id.is_none_or(|orig| !aliases.contains_key(orig))
+}
+
+fn validation_reason(msg: &str, dict: &FixTagLookup) -> Option<String> {
+    let report = validator::validate_fix_message(msg, dict);
+    if report.is_clean() {
+        return None;
+    }
+
+    let mut errors = Vec::new();
+    for error in report.errors {
+        if !errors.contains(&error) {
+            errors.push(error);
+        }
+    }
+
+    Some(errors.join("; "))
 }
 
 fn render_record_header(
@@ -391,8 +659,8 @@ fn render_timeline(
     colours: crate::decoder::colours::ColourPalette,
 ) -> std::io::Result<()> {
     writeln!(out, "    {}Timeline:{}", colours.tag, colours.reset)?;
-    let rendered_msgs: Vec<String> = record
-        .events
+    let ordered_events = record.ordered_events();
+    let rendered_msgs: Vec<String> = ordered_events
         .iter()
         .map(|ev| format_msg_cell(colours, ev))
         .collect();
@@ -406,7 +674,7 @@ fn render_timeline(
     let headers = build_timeline_headers(record, msg_width);
     render_timeline_headers(out, &headers, colours)?;
 
-    for (ev, msg_cell) in record.events.iter().zip(rendered_msgs.iter()) {
+    for (ev, msg_cell) in ordered_events.iter().zip(rendered_msgs.iter()) {
         let cells = build_timeline_cells(record, ev, msg_cell, msg_width, colours);
         writeln!(out, "      {}{}", colours.line, cells.join(" "))?;
     }
@@ -474,6 +742,7 @@ fn build_timeline_cells(
         event.leaves_qty.as_deref().unwrap_or("-"),
         colours.reset
     );
+    let text = format_timeline_text(colours, event);
 
     let mut cells = Vec::new();
     cells.push(pad_ansi(
@@ -492,10 +761,7 @@ fn build_timeline_cells(
         &colour_value(colours, event.avg_px.as_deref().unwrap_or("-")),
         10,
     ));
-    cells.push(pad_ansi(
-        &colour_text(colours, event.text.as_deref().unwrap_or("")),
-        0,
-    ));
+    cells.push(pad_ansi(&text, 0));
 
     cells
 }
@@ -543,6 +809,7 @@ impl OrderRecord {
             last_qty: None,
             bn_seen: false,
             bn_exec_amt: None,
+            last_sequence: 0,
             order_qty_name: None,
             cum_qty_name: None,
             leaves_qty_name: None,
@@ -741,7 +1008,7 @@ impl OrderRecord {
 
     fn state_path(&self) -> Vec<String> {
         let mut states = Vec::new();
-        for ev in &self.events {
+        for ev in self.ordered_events() {
             if let Some(last) = states.last()
                 && last == &ev.state
             {
@@ -750,6 +1017,40 @@ impl OrderRecord {
             states.push(ev.state.clone());
         }
         states
+    }
+
+    fn ordered_events(&self) -> Vec<&OrderEvent> {
+        let mut seen = HashSet::new();
+        let mut events: Vec<&OrderEvent> = self.events.iter().collect();
+        events.sort_by(|left, right| {
+            compare_event_position(
+                left.time.as_deref(),
+                left.sequence,
+                right.time.as_deref(),
+                right.sequence,
+            )
+        });
+        events
+            .into_iter()
+            .filter(|event| seen.insert(event.fingerprint()))
+            .collect()
+    }
+
+    fn ordered_messages(&self) -> Vec<&OrderMessage> {
+        let mut seen = HashSet::new();
+        let mut messages: Vec<&OrderMessage> = self.messages.iter().collect();
+        messages.sort_by(|left, right| {
+            compare_event_position(
+                left.time.as_deref(),
+                left.sequence,
+                right.time.as_deref(),
+                right.sequence,
+            )
+        });
+        messages
+            .into_iter()
+            .filter(|message| seen.insert(message.fingerprint.clone()))
+            .collect()
     }
 
     fn display_id(&self) -> String {
@@ -770,7 +1071,12 @@ impl OrderRecord {
 }
 
 impl OrderEvent {
-    fn from_fields(fields: &HashMap<u32, String>, dict: &FixTagLookup) -> Self {
+    fn from_fields(
+        fields: &HashMap<u32, String>,
+        dict: &FixTagLookup,
+        invalid_reason: Option<String>,
+        sequence: usize,
+    ) -> Self {
         let exec_type = fields.get(&150).cloned();
         let ord_status = fields.get(&39).cloned();
         let exec_ack_status = fields.get(&1036).cloned();
@@ -783,6 +1089,7 @@ impl OrderEvent {
         );
 
         Self {
+            sequence,
             time: fields
                 .get(&60)
                 .cloned()
@@ -791,6 +1098,7 @@ impl OrderEvent {
             msg_type_desc: fields
                 .get(&35)
                 .and_then(|mt| dict.enum_description(35, mt).map(|d| d.to_string())),
+            invalid_reason,
             exec_type,
             ord_status,
             exec_ack_status,
@@ -812,6 +1120,52 @@ impl OrderEvent {
 
     fn ord_label(&self) -> String {
         label_ord_status(self.ord_status.as_deref())
+    }
+
+    fn fingerprint(&self) -> String {
+        [
+            self.time.as_deref().unwrap_or(""),
+            self.msg_type.as_deref().unwrap_or(""),
+            self.invalid_reason.as_deref().unwrap_or(""),
+            self.exec_type.as_deref().unwrap_or(""),
+            self.ord_status.as_deref().unwrap_or(""),
+            self.exec_ack_status.as_deref().unwrap_or(""),
+            self.cum_qty.as_deref().unwrap_or(""),
+            self.leaves_qty.as_deref().unwrap_or(""),
+            self.last_qty.as_deref().unwrap_or(""),
+            self.last_px.as_deref().unwrap_or(""),
+            self.avg_px.as_deref().unwrap_or(""),
+            self.text.as_deref().unwrap_or(""),
+            self.cl_ord_id.as_deref().unwrap_or(""),
+            self.orig_cl_ord_id.as_deref().unwrap_or(""),
+        ]
+        .join("\u{1f}")
+    }
+}
+
+impl OrderMessage {
+    fn from_event(event: &OrderEvent, display: String) -> Self {
+        Self {
+            sequence: event.sequence,
+            time: event.time.clone(),
+            fingerprint: event.fingerprint(),
+            display,
+            invalid_reason: event.invalid_reason.clone(),
+        }
+    }
+}
+
+fn compare_event_position(
+    left_time: Option<&str>,
+    left_sequence: usize,
+    right_time: Option<&str>,
+    right_sequence: usize,
+) -> std::cmp::Ordering {
+    match (left_time, right_time) {
+        (Some(left), Some(right)) => left.cmp(right).then(left_sequence.cmp(&right_sequence)),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => left_sequence.cmp(&right_sequence),
     }
 }
 
@@ -949,6 +1303,23 @@ fn colour_text(colours: crate::decoder::colours::ColourPalette, value: &str) -> 
         return format!("{}-{}", colours.name, colours.reset);
     }
     format!("{}{}{}", colours.name, value, colours.reset)
+}
+
+fn format_timeline_text(
+    colours: crate::decoder::colours::ColourPalette,
+    event: &OrderEvent,
+) -> String {
+    let text = event.text.as_deref().filter(|text| !text.is_empty());
+    let invalid = event.invalid_reason.as_deref();
+    match (text, invalid) {
+        (Some(text), Some(reason)) => format!(
+            "{}{}{} | {}Invalid: {}{}",
+            colours.name, text, colours.reset, colours.error, reason, colours.reset
+        ),
+        (Some(text), None) => colour_text(colours, text),
+        (None, Some(reason)) => format!("{}Invalid: {}{}", colours.error, reason, colours.reset),
+        (None, None) => colour_text(colours, ""),
+    }
 }
 
 fn colour_label_code(
@@ -1398,6 +1769,59 @@ mod tests {
     }
 
     #[test]
+    fn ignores_standard_admin_messages() {
+        let mut summary = OrderSummary::new('\u{0001}');
+        summary.record_message(
+            &msg(&[
+                ("35", "0"),
+                ("49", "SENDER"),
+                ("56", "TARGET"),
+                ("112", "PING"),
+            ]),
+            None,
+        );
+        summary.record_message(
+            &msg(&[
+                ("35", "A"),
+                ("49", "SENDER"),
+                ("56", "TARGET"),
+                ("98", "0"),
+                ("108", "30"),
+            ]),
+            None,
+        );
+
+        assert!(
+            summary.orders.is_empty(),
+            "admin messages should not create orders"
+        );
+        assert!(
+            summary.completed.is_empty(),
+            "admin messages should not emit completed summaries"
+        );
+        assert_eq!(summary.total_orders, 0);
+    }
+
+    #[test]
+    fn ignores_non_order_flow_messages_without_resolvable_ids() {
+        let mut summary = OrderSummary::new('\u{0001}');
+        summary.record_message(
+            &msg(&[("35", "W"), ("55", "EUR/USD"), ("268", "1"), ("269", "0")]),
+            None,
+        );
+
+        assert!(
+            summary.orders.is_empty(),
+            "non-order application messages should not create summary rows"
+        );
+        assert!(
+            summary.completed.is_empty(),
+            "non-order application messages should not emit completed summaries"
+        );
+        assert_eq!(summary.total_orders, 0);
+    }
+
+    #[test]
     fn absorb_fields_sets_core_values() {
         let dict = crate::decoder::tag_lookup::load_dictionary(
             "8=FIX.4.4\u{0001}35=D\u{0001}10=000\u{0001}",
@@ -1529,9 +1953,11 @@ mod tests {
     fn state_path_deduplicates_consecutive_states() {
         let mut record = OrderRecord::new("KEY".into());
         record.events.push(OrderEvent {
+            sequence: 1,
             time: None,
             msg_type: None,
             msg_type_desc: None,
+            invalid_reason: None,
             exec_type: Some("0".into()),
             ord_status: None,
             exec_ack_status: None,
@@ -1546,13 +1972,210 @@ mod tests {
             orig_cl_ord_id: None,
         });
         record.events.push(OrderEvent {
+            sequence: 2,
             state: "New".into(),
             ..record.events[0].clone()
         });
         record.events.push(OrderEvent {
+            sequence: 3,
             state: "Filled".into(),
+            exec_type: Some("2".into()),
             ..record.events[0].clone()
         });
         assert_eq!(record.state_path(), vec!["New", "Filled"]);
+    }
+
+    #[test]
+    fn state_path_orders_by_time_and_deduplicates_repeated_events() {
+        let mut record = OrderRecord::new("KEY".into());
+        record.events.push(OrderEvent {
+            sequence: 4,
+            time: Some("20250519-15:07:20.106".into()),
+            msg_type: Some("8".into()),
+            msg_type_desc: Some("EXECUTION_REPORT".into()),
+            invalid_reason: None,
+            exec_type: Some("F".into()),
+            ord_status: Some("2".into()),
+            exec_ack_status: None,
+            state: "Filled".into(),
+            cum_qty: Some("3000000".into()),
+            leaves_qty: Some("0".into()),
+            last_qty: Some("2000000".into()),
+            last_px: Some("19.391".into()),
+            avg_px: Some("19.391".into()),
+            text: None,
+            cl_ord_id: Some("C1".into()),
+            orig_cl_ord_id: Some("C1".into()),
+        });
+        record.events.push(OrderEvent {
+            sequence: 1,
+            time: Some("20250519-11:04:03.540".into()),
+            msg_type: Some("D".into()),
+            msg_type_desc: Some("NEW_ORDER_SINGLE".into()),
+            invalid_reason: None,
+            exec_type: None,
+            ord_status: None,
+            exec_ack_status: None,
+            state: "Unknown".into(),
+            cum_qty: None,
+            leaves_qty: None,
+            last_qty: None,
+            last_px: None,
+            avg_px: None,
+            text: None,
+            cl_ord_id: Some("C1".into()),
+            orig_cl_ord_id: None,
+        });
+        record.events.push(OrderEvent {
+            sequence: 2,
+            time: Some("20250519-15:04:03.541".into()),
+            msg_type: Some("8".into()),
+            msg_type_desc: Some("EXECUTION_REPORT".into()),
+            invalid_reason: None,
+            exec_type: Some("0".into()),
+            ord_status: Some("0".into()),
+            exec_ack_status: None,
+            state: "New".into(),
+            cum_qty: Some("0".into()),
+            leaves_qty: Some("3000000".into()),
+            last_qty: None,
+            last_px: None,
+            avg_px: Some("0".into()),
+            text: Some("Accepted order".into()),
+            cl_ord_id: Some("C1".into()),
+            orig_cl_ord_id: Some("C1".into()),
+        });
+        record.events.push(OrderEvent {
+            sequence: 3,
+            time: Some("20250519-15:07:20.036".into()),
+            msg_type: Some("8".into()),
+            msg_type_desc: Some("EXECUTION_REPORT".into()),
+            invalid_reason: None,
+            exec_type: Some("F".into()),
+            ord_status: Some("1".into()),
+            exec_ack_status: None,
+            state: "Partially Filled".into(),
+            cum_qty: Some("1000000".into()),
+            leaves_qty: Some("2000000".into()),
+            last_qty: Some("1000000".into()),
+            last_px: Some("19.391".into()),
+            avg_px: Some("19.391".into()),
+            text: None,
+            cl_ord_id: Some("C1".into()),
+            orig_cl_ord_id: Some("C1".into()),
+        });
+        record.events.push(record.events[3].clone());
+
+        assert_eq!(
+            record.state_path(),
+            vec!["Unknown", "New", "Partially Filled", "Filled"]
+        );
+        assert_eq!(
+            flow_label(&record.state_path()),
+            "New -> Partially Filled -> Filled"
+        );
+        assert_eq!(record.ordered_events().len(), 4);
+    }
+
+    #[test]
+    fn paged_sections_accumulate_admin_counts_through_visible_order() {
+        let mut summary = OrderSummary::new('\u{0001}');
+        summary.record_message(
+            &msg(&[
+                ("35", "A"),
+                ("49", "SENDER"),
+                ("56", "TARGET"),
+                ("98", "0"),
+                ("108", "30"),
+            ]),
+            None,
+        );
+        summary.record_message(
+            &msg(&[
+                ("35", "D"),
+                ("11", "C1"),
+                ("55", "EUR/USD"),
+                ("54", "1"),
+                ("38", "1000000"),
+                ("40", "2"),
+                ("44", "1.1000"),
+            ]),
+            None,
+        );
+        summary.record_message(
+            &msg(&[
+                ("35", "8"),
+                ("37", "O1"),
+                ("11", "C1"),
+                ("41", "C1"),
+                ("150", "0"),
+                ("39", "0"),
+                ("151", "1000000"),
+                ("55", "EUR/USD"),
+                ("54", "1"),
+                ("38", "1000000"),
+            ]),
+            None,
+        );
+        summary.record_message(
+            &msg(&[("35", "0"), ("49", "SENDER"), ("56", "TARGET")]),
+            None,
+        );
+        summary.record_message(
+            &msg(&[
+                ("35", "D"),
+                ("11", "C2"),
+                ("55", "GBP/USD"),
+                ("54", "2"),
+                ("38", "2000000"),
+                ("40", "2"),
+                ("44", "1.2500"),
+            ]),
+            None,
+        );
+
+        let sections = summary
+            .build_paged_sections()
+            .expect("build pager sections");
+        assert_eq!(sections.len(), 2);
+
+        let first_counts = &sections[0].message_counts;
+        assert_eq!(
+            first_counts
+                .iter()
+                .find(|count| count.msg_type == "A")
+                .map(|count| count.count),
+            Some(1)
+        );
+        assert_eq!(
+            first_counts
+                .iter()
+                .find(|count| count.msg_type == "D")
+                .map(|count| count.count),
+            Some(1)
+        );
+        assert_eq!(
+            first_counts
+                .iter()
+                .find(|count| count.msg_type == "8")
+                .map(|count| count.count),
+            Some(1)
+        );
+
+        let second_counts = &sections[1].message_counts;
+        assert_eq!(
+            second_counts
+                .iter()
+                .find(|count| count.msg_type == "0")
+                .map(|count| count.count),
+            Some(1)
+        );
+        assert_eq!(
+            second_counts
+                .iter()
+                .find(|count| count.msg_type == "D")
+                .map(|count| count.count),
+            Some(2)
+        );
     }
 }
