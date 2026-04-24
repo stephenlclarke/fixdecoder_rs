@@ -238,6 +238,17 @@ struct GroupRenderer<'a> {
 }
 
 impl<'a> GroupRenderer<'a> {
+    fn display_group_name(spec: &MessageDefGroupSpec) -> &str {
+        spec.name
+            .strip_prefix("No")
+            .filter(|name| {
+                name.chars()
+                    .next()
+                    .is_some_and(|ch| ch.is_ascii_uppercase())
+            })
+            .unwrap_or(spec.name.as_str())
+    }
+
     fn write_field(&self, output: &mut String, field: &FieldValue, indent_spaces: usize) {
         write_field_line(
             output,
@@ -325,11 +336,15 @@ impl<'a> GroupRenderer<'a> {
         indent_spaces: usize,
         entry_idx: usize,
     ) -> usize {
-        let entry_label = format!("Group {}", entry_idx);
-        let dash_count = 60usize.saturating_sub(entry_label.len());
+        const GROUP_SEPARATOR_END_COL: usize = BASE_INDENT + NAME_TEXT_OFFSET + 61;
+        const MIN_GROUP_SEPARATOR_DASHES: usize = 8;
+
+        let entry_label = format!("{} Group {}", Self::display_group_name(spec), entry_idx);
+        let label_indent = indent_spaces + NAME_TEXT_OFFSET;
+        let dash_count = GROUP_SEPARATOR_END_COL
+            .saturating_sub(label_indent + entry_label.len() + 1)
+            .max(MIN_GROUP_SEPARATOR_DASHES);
         let dashes = "-".repeat(dash_count);
-        let dash_start_col = indent_spaces + NAME_TEXT_OFFSET;
-        let label_indent = dash_start_col.saturating_sub(entry_label.len());
         output.push_str(&format!(
             "{}{} {}{}{}\n",
             indent(label_indent),
@@ -1396,6 +1411,15 @@ mod tests {
     const SOH: char = '\u{0001}';
     static TEST_GUARD: once_cell::sync::Lazy<Mutex<()>> =
         once_cell::sync::Lazy::new(|| Mutex::new(()));
+    const PARTIES_FIXTURE: &str =
+        include_str!("../../resources/examples/repeating_groups/new_order_single_parties.fix");
+    const PREALLOCS_FIXTURE: &str =
+        include_str!("../../resources/examples/repeating_groups/new_order_single_preallocs.fix");
+    const ALLOCATION_ORDERS_FIXTURE: &str =
+        include_str!("../../resources/examples/repeating_groups/allocation_instruction_orders.fix");
+    const MD_SNAPSHOT_FIXTURE: &str = include_str!(
+        "../../resources/examples/repeating_groups/market_data_snapshot_full_refresh.fix"
+    );
 
     fn small_group_lookup() -> FixTagLookup {
         let xml = r#"
@@ -1441,6 +1465,22 @@ mod tests {
         FixTagLookup::from_dictionary(&dict, "FIX44")
     }
 
+    fn fixture_message(contents: &str) -> &str {
+        contents
+            .lines()
+            .find(|line| {
+                let trimmed = line.trim();
+                !trimmed.is_empty() && !trimmed.starts_with('#')
+            })
+            .expect("fixture should contain a FIX message")
+    }
+
+    fn render_repeating_group_fixture(contents: &str) -> String {
+        disable_output_colours();
+        let dict = embedded_fix44_lookup();
+        prettify_with_report(fixture_message(contents), &dict, None)
+    }
+
     #[test]
     fn prettify_aligns_group_entries_without_header() {
         let _lock = TEST_GUARD.lock().unwrap();
@@ -1460,14 +1500,230 @@ mod tests {
             .expect("count tag line present");
         let group_line = rendered
             .lines()
-            .find(|l| l.contains("Group 1"))
+            .find(|l| l.contains("MDEntries Group 1"))
             .expect("group entry label present");
-        let paren_col = count_line.find('(').expect("open paren present");
-        let dash_col = group_line.find('-').expect("dashes present");
         assert_eq!(
-            dash_col,
-            paren_col + 1,
-            "group separator should start one space after '(' anchor"
+            group_line.trim_start(),
+            "MDEntries Group 1 -------------------------------------------",
+            "group labels should use the repeating-group name and an unpadded entry number"
+        );
+        assert_eq!(
+            group_line
+                .chars()
+                .position(|ch| ch != ' ')
+                .expect("group label indent"),
+            count_line.find('(').expect("count line group name anchor"),
+            "group title should start directly under the count line's group name"
+        );
+    }
+
+    #[test]
+    fn group_labels_use_group_name_without_padding() {
+        let _lock = TEST_GUARD.lock().unwrap();
+        disable_output_colours();
+        let dict = small_group_lookup();
+
+        let mut msg = format!("8=FIX.4.4{SOH}35=W{SOH}268=123{SOH}");
+        for idx in 1..=123 {
+            let entry_type = if idx % 2 == 0 { '1' } else { '0' };
+            msg.push_str(&format!("269={entry_type}{SOH}270={idx}.00{SOH}"));
+        }
+        msg.push_str(&format!("10=000{SOH}"));
+
+        let rendered = prettify_with_report(&msg, &dict, None);
+        let labels: Vec<&str> = rendered
+            .lines()
+            .filter(|line| line.trim_start().starts_with("MDEntries Group "))
+            .collect();
+
+        assert_eq!(labels.len(), 123, "expected one label per group entry");
+        assert_eq!(
+            labels[0].trim().trim_end_matches('-').trim_end(),
+            "MDEntries Group 1",
+            "single-digit entries should not be padded"
+        );
+        assert_eq!(
+            labels[11].trim().trim_end_matches('-').trim_end(),
+            "MDEntries Group 12",
+            "double-digit entries should keep the raw number"
+        );
+        assert_eq!(
+            labels[122].trim().trim_end_matches('-').trim_end(),
+            "MDEntries Group 123",
+            "triple-digit entries should render directly"
+        );
+        assert_eq!(
+            labels[0].len(),
+            labels[11].len(),
+            "group separators should end on the same column for different entry widths"
+        );
+        assert_eq!(
+            labels[11].len(),
+            labels[122].len(),
+            "group separators should stay tidy as the entry number grows"
+        );
+    }
+
+    #[test]
+    fn renders_parties_fixture_with_nested_party_sub_ids() {
+        let _lock = TEST_GUARD.lock().unwrap();
+        let rendered = render_repeating_group_fixture(PARTIES_FIXTURE);
+
+        assert!(
+            rendered.contains("453 (NoPartyIDs): 2"),
+            "party count should be rendered: {rendered}"
+        );
+        assert_eq!(
+            rendered
+                .lines()
+                .filter(|line| line.trim_start().starts_with("PartyIDs Group "))
+                .count(),
+            2,
+            "expected two top-level party groups: {rendered}"
+        );
+        let top_level_count = rendered
+            .lines()
+            .find(|line| line.contains("453 (NoPartyIDs): 2"))
+            .expect("top-level count line");
+        let top_level_group = rendered
+            .lines()
+            .find(|line| line.trim_start().starts_with("PartyIDs Group 1 "))
+            .expect("top-level group title");
+        assert_eq!(
+            top_level_group
+                .chars()
+                .position(|ch| ch != ' ')
+                .expect("top-level group indent"),
+            top_level_count
+                .find('(')
+                .expect("top-level group name anchor"),
+            "top-level group title should align with the count line's group name"
+        );
+        assert!(
+            rendered.lines().any(|line| {
+                line.starts_with(' ')
+                    && line.trim_start().starts_with("PartySubIDs Group 1 ")
+                    && line.contains('-')
+            }),
+            "nested PartySubID group should be indented under the first party: {rendered}"
+        );
+        let nested_count_line = rendered
+            .lines()
+            .find(|line| line.contains("802 (NoPartySubIDs): 1"))
+            .expect("nested count line");
+        let nested_group_line = rendered
+            .lines()
+            .find(|line| line.trim_start().starts_with("PartySubIDs Group 1 "))
+            .expect("nested group title");
+        assert_eq!(
+            nested_group_line
+                .chars()
+                .position(|ch| ch != ' ')
+                .expect("nested group indent"),
+            nested_count_line
+                .find('(')
+                .expect("nested group name anchor"),
+            "nested group title should align with the nested count line's group name"
+        );
+        assert_eq!(
+            top_level_group.len(),
+            nested_group_line.len(),
+            "top-level and nested group separators should finish on the same column"
+        );
+
+        let first_party = rendered
+            .find("448 (PartyID): DEUTDEFF")
+            .expect("first party id");
+        let nested_count = rendered
+            .find("802 (NoPartySubIDs): 1")
+            .expect("nested group count");
+        let sub_id = rendered
+            .find("523 (PartySubID): ACC-12345")
+            .expect("nested group value");
+        let second_party = rendered
+            .find("448 (PartyID): CLIENT01")
+            .expect("second party id");
+        assert!(
+            first_party < nested_count && nested_count < sub_id && sub_id < second_party,
+            "nested party sub-id fields should stay inside the first party entry: {rendered}"
+        );
+    }
+
+    #[test]
+    fn renders_prealloc_fixture_with_each_allocation_entry() {
+        let _lock = TEST_GUARD.lock().unwrap();
+        let rendered = render_repeating_group_fixture(PREALLOCS_FIXTURE);
+
+        assert!(
+            rendered.contains("78 (NoAllocs): 2"),
+            "allocation count should be rendered: {rendered}"
+        );
+        assert_eq!(
+            rendered
+                .lines()
+                .filter(|line| line.trim_start().starts_with("Allocs Group "))
+                .count(),
+            2,
+            "expected two allocation groups: {rendered}"
+        );
+        assert!(
+            rendered.contains("79 (AllocAccount): ACC-ALPHA")
+                && rendered.contains("79 (AllocAccount): ACC-BETA")
+                && rendered.contains("80 (AllocQty): 600")
+                && rendered.contains("80 (AllocQty): 400"),
+            "both pre-allocation entries should render their account and quantity: {rendered}"
+        );
+    }
+
+    #[test]
+    fn renders_allocation_instruction_fixture_with_order_groups() {
+        let _lock = TEST_GUARD.lock().unwrap();
+        let rendered = render_repeating_group_fixture(ALLOCATION_ORDERS_FIXTURE);
+
+        assert!(
+            rendered.contains("73 (NoOrders): 2"),
+            "order allocation count should be rendered: {rendered}"
+        );
+        assert_eq!(
+            rendered
+                .lines()
+                .filter(|line| line.trim_start().starts_with("Orders Group "))
+                .count(),
+            2,
+            "expected two order allocation groups: {rendered}"
+        );
+        assert!(
+            rendered.contains("11 (ClOrdID): ORD-1001")
+                && rendered.contains("37 (OrderID): BRK-9001")
+                && rendered.contains("11 (ClOrdID): ORD-1002")
+                && rendered.contains("37 (OrderID): BRK-9002"),
+            "each order allocation group should retain its order identifiers: {rendered}"
+        );
+    }
+
+    #[test]
+    fn renders_market_data_fixture_with_bid_and_offer_entries() {
+        let _lock = TEST_GUARD.lock().unwrap();
+        let rendered = render_repeating_group_fixture(MD_SNAPSHOT_FIXTURE);
+
+        assert!(
+            rendered.contains("268 (NoMDEntries): 2"),
+            "market data entry count should be rendered: {rendered}"
+        );
+        assert_eq!(
+            rendered
+                .lines()
+                .filter(|line| line.trim_start().starts_with("MDEntries Group "))
+                .count(),
+            2,
+            "expected two market data entry groups: {rendered}"
+        );
+        assert!(
+            rendered.contains("269 (MDEntryType): 0 (BID)")
+                && rendered.contains("270 (MDEntryPx): 185.25")
+                && rendered.contains("269 (MDEntryType): 1 (OFFER)")
+                && rendered.contains("270 (MDEntryPx): 185.30"),
+            "bid and offer entries should render with their prices: {rendered}"
         );
     }
 
