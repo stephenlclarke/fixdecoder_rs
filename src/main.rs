@@ -24,17 +24,19 @@ use decoder::{
     print_tags_in_columns, register_fix_dictionary, schema::SchemaTree, summary::OrderSummary,
     summary_pager, tag_lookup,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::ffi::OsString;
-use std::fs;
+use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::io::IsTerminal;
 use std::io::Write;
-use std::path::Path;
+use std::io::{BufRead, BufReader, BufWriter};
+use std::path::{Path, PathBuf};
 use std::process::{self, Child, ChildStdin, Command as ProcessCommand, ExitStatus, Stdio};
 use std::sync::OnceLock;
 use std::sync::atomic::Ordering;
+use tempfile::{Builder as TempFileBuilder, TempDir};
 
 /// Wrapper for a custom FIX dictionary sourced from `--xml` along with its path.
 struct CustomDictionary {
@@ -240,6 +242,11 @@ impl Write for AppWriter {
     }
 }
 
+struct RenderedPagerFiles {
+    _dir: TempDir,
+    paths: Vec<PathBuf>,
+}
+
 fn install_interrupt_handler() -> Result<()> {
     ctrlc::set_handler(|| {
         let _ = io::stdout().write_all(b"\n\n");
@@ -271,6 +278,10 @@ fn run() -> Result<i32> {
         return Ok(0);
     };
 
+    if opts.secret_files {
+        return generate_secret_files(&opts);
+    }
+
     let (custom_dicts, schema) = prepare_schema(&opts)?;
 
     if run_handlers(&opts, &schema, &custom_dicts)? {
@@ -290,6 +301,19 @@ fn run() -> Result<i32> {
         .then(|| normalise_fix_key(&opts.fix_version))
         .flatten();
     let mut stderr = io::stderr();
+    if should_use_multi_file_pager(&opts, stdout_is_terminal, &files) {
+        let code = run_multi_file_pager(
+            &opts,
+            &files,
+            &obfuscator,
+            fix_override.as_deref(),
+            stdout_is_terminal,
+            &mut stderr,
+        )?;
+        warn_on_override_fallback(&mut stderr);
+        return Ok(final_exit_code(code));
+    }
+
     let code = if summary_pager_active {
         let mut sink = io::sink();
         let mut ctx = build_context(
@@ -356,8 +380,40 @@ fn parse_cli_options() -> Result<Option<CliOptions>> {
 
     let default_matches = parse_default_arg_matches(default_args_env_value()?.as_deref())?;
     let opts = CliOptions::from_matches(&matches, default_matches.as_ref())?;
+    validate_cli_options(&opts)?;
 
     Ok(Some(opts))
+}
+
+fn validate_cli_options(opts: &CliOptions) -> Result<()> {
+    if opts.secret_dir.is_some() && !opts.secret_files {
+        return Err(anyhow!("--secret-dir requires --secret-files"));
+    }
+    if !opts.secret_files {
+        return Ok(());
+    }
+    if opts.files.is_empty() {
+        return Err(anyhow!("--secret-files requires one or more input files"));
+    }
+    if opts.files.iter().any(|path| path == "-") {
+        return Err(anyhow!(
+            "--secret-files requires real file paths; stdin is not supported"
+        ));
+    }
+    for (enabled, flag) in [
+        (opts.info, "--info"),
+        (opts.message_flag, "--message"),
+        (opts.component_flag, "--component"),
+        (opts.tag_flag, "--tag"),
+        (opts.validate, "--validate"),
+        (opts.summary, "--summary"),
+        (opts.follow, "--follow"),
+    ] {
+        if enabled {
+            return Err(anyhow!("--secret-files cannot be combined with {flag}"));
+        }
+    }
+    Ok(())
 }
 
 fn default_args_env_value() -> Result<Option<String>> {
@@ -438,6 +494,306 @@ fn resolve_input_files(opts: &CliOptions) -> Vec<String> {
     } else {
         opts.files.clone()
     }
+}
+
+fn should_use_multi_file_pager(
+    opts: &CliOptions,
+    stdout_is_terminal: bool,
+    files: &[String],
+) -> bool {
+    if opts.summary
+        || !opts
+            .paging
+            .should_use_pager(stdout_is_terminal, opts.follow)
+        || files.len() < 2
+        || files.iter().any(|path| path == "-")
+    {
+        return false;
+    }
+
+    pager_supports_file_inputs(&resolve_pager_command(
+        opts.pager.as_deref(),
+        opts.paging,
+        opts.nowrap,
+    ))
+}
+
+fn pager_supports_file_inputs(command: &str) -> bool {
+    !uses_shell_syntax(command) && shlex::split(command).is_some_and(|parts| !parts.is_empty())
+}
+
+fn run_multi_file_pager(
+    opts: &CliOptions,
+    files: &[String],
+    obfuscator: &fix::Obfuscator,
+    fix_override: Option<&str>,
+    stdout_is_terminal: bool,
+    stderr: &mut dyn Write,
+) -> Result<i32> {
+    let rendered = render_files_for_pager(
+        opts,
+        files,
+        obfuscator,
+        fix_override,
+        stdout_is_terminal,
+        stderr,
+    )?;
+    let command = resolve_pager_command(opts.pager.as_deref(), opts.paging, opts.nowrap);
+    page_rendered_files(&command, opts.nowrap, &rendered.files.paths)?;
+    Ok(rendered.exit_code)
+}
+
+fn render_files_for_pager(
+    opts: &CliOptions,
+    files: &[String],
+    obfuscator: &fix::Obfuscator,
+    fix_override: Option<&str>,
+    stdout_is_terminal: bool,
+    stderr: &mut dyn Write,
+) -> Result<RenderedPagerFilesResult> {
+    let dir = TempFileBuilder::new()
+        .prefix("fixdecoder-pager-")
+        .tempdir()
+        .context("failed to create temporary pager directory")?;
+
+    let mut exit_code = 0;
+    let mut paths = Vec::with_capacity(files.len());
+
+    for (index, input) in files.iter().enumerate() {
+        let output_path = dir.path().join(rendered_pager_file_name(index, input));
+        let output_file = File::create(&output_path)
+            .with_context(|| format!("failed to create {}", output_path.display()))?;
+        let mut output = BufWriter::new(output_file);
+        let mut summary = None;
+        let status = {
+            let mut ctx = build_context(
+                obfuscator,
+                &mut summary,
+                fix_override,
+                opts,
+                stdout_is_terminal,
+                &mut output,
+                stderr,
+            );
+            prettify_files(std::slice::from_ref(input), &mut ctx)
+        };
+        output
+            .flush()
+            .with_context(|| format!("failed to flush {}", output_path.display()))?;
+        if status != 0 {
+            exit_code = 1;
+        }
+        paths.push(output_path);
+    }
+
+    Ok(RenderedPagerFilesResult {
+        files: RenderedPagerFiles { _dir: dir, paths },
+        exit_code,
+    })
+}
+
+fn rendered_pager_file_name(index: usize, input: &str) -> String {
+    let base = Path::new(input)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .unwrap_or("stdin");
+    let sanitised: String = base
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let stem = if sanitised.is_empty() {
+        "input"
+    } else {
+        sanitised.as_str()
+    };
+    format!("{:04}-{stem}.out", index + 1)
+}
+
+fn page_rendered_files(command: &str, nowrap: bool, paths: &[PathBuf]) -> Result<()> {
+    let spec = pager_process_spec(command, nowrap, paths)?;
+    let mut child_cmd = ProcessCommand::new(&spec.executable);
+    child_cmd.args(&spec.args);
+    if spec.less_executable {
+        match effective_less_options(env::var("LESS").ok().as_deref(), nowrap) {
+            Some(options) => {
+                child_cmd.env("LESS", options);
+            }
+            None => {
+                child_cmd.env_remove("LESS");
+            }
+        }
+    }
+
+    let status = child_cmd
+        .status()
+        .with_context(|| format!("failed to launch pager: {}", spec.command))?;
+    ensure_successful_pager_exit(&spec.command, status)
+}
+
+fn pager_process_spec(command: &str, nowrap: bool, paths: &[PathBuf]) -> Result<PagerProcessSpec> {
+    let command = normalise_less_command(command, nowrap)?;
+    if uses_shell_syntax(&command) {
+        return Err(anyhow!(
+            "pager command cannot accept multiple files: {command}"
+        ));
+    }
+    let Some(mut parts) = shlex::split(&command) else {
+        return Err(anyhow!("failed to parse pager command: {command}"));
+    };
+    if parts.is_empty() {
+        return Err(anyhow!("pager command is empty"));
+    }
+
+    let executable = parts.remove(0);
+    let less_executable = is_less_executable(&executable);
+    let mut args: Vec<OsString> = parts.into_iter().map(OsString::from).collect();
+    args.extend(paths.iter().map(|path| path.as_os_str().to_os_string()));
+
+    Ok(PagerProcessSpec {
+        executable: executable.into(),
+        args,
+        command,
+        less_executable,
+    })
+}
+
+struct PagerProcessSpec {
+    executable: OsString,
+    args: Vec<OsString>,
+    command: String,
+    less_executable: bool,
+}
+
+struct RenderedPagerFilesResult {
+    files: RenderedPagerFiles,
+    exit_code: i32,
+}
+
+fn generate_secret_files(opts: &CliOptions) -> Result<i32> {
+    let files = resolve_input_files(opts);
+    let secret_dir = opts.secret_dir.as_deref().map(Path::new);
+    let planned = plan_secret_outputs(&files, secret_dir)?;
+    let obfuscator = fix::create_obfuscator(true);
+
+    for (input, output) in planned {
+        obfuscator.reset();
+        write_secret_file(Path::new(&input), &output, &obfuscator)?;
+        println!("Wrote secret file: {}", output.display());
+    }
+
+    Ok(0)
+}
+
+fn plan_secret_outputs(
+    inputs: &[String],
+    secret_dir: Option<&Path>,
+) -> Result<Vec<(String, PathBuf)>> {
+    if let Some(dir) = secret_dir {
+        fs::create_dir_all(dir).with_context(|| {
+            format!("failed to create secret output directory {}", dir.display())
+        })?;
+    }
+
+    let mut seen = HashSet::new();
+    let mut planned = Vec::with_capacity(inputs.len());
+    for input in inputs {
+        let input_path = Path::new(input);
+        let output = secret_output_path(input_path, secret_dir)?;
+        if output.exists() {
+            return Err(anyhow!(
+                "refusing to overwrite existing secret file {}",
+                output.display()
+            ));
+        }
+        let key = output.to_string_lossy().to_string();
+        if !seen.insert(key.clone()) {
+            return Err(anyhow!("secret output path collision at {key}"));
+        }
+        planned.push((input.clone(), output));
+    }
+    Ok(planned)
+}
+
+fn secret_output_path(input: &Path, secret_dir: Option<&Path>) -> Result<PathBuf> {
+    let file_name = input
+        .file_name()
+        .ok_or_else(|| anyhow!("input path {} has no file name", input.display()))?;
+    let file_name = file_name.to_string_lossy();
+    let output_name = match (
+        input
+            .file_stem()
+            .map(|stem| stem.to_string_lossy().into_owned()),
+        input
+            .extension()
+            .map(|ext| ext.to_string_lossy().into_owned()),
+    ) {
+        (Some(stem), Some(ext)) if !stem.is_empty() && !ext.is_empty() => {
+            format!("{stem}.secret.{ext}")
+        }
+        _ => format!("{file_name}.secret"),
+    };
+
+    let mut output = secret_dir.map(Path::to_path_buf).unwrap_or_else(|| {
+        input
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .to_path_buf()
+    });
+    output.push(output_name);
+    Ok(output)
+}
+
+fn write_secret_file(input: &Path, output: &Path, obfuscator: &fix::Obfuscator) -> Result<()> {
+    let result = (|| -> Result<()> {
+        let input_file = File::open(input)
+            .with_context(|| format!("failed to open input file {}", input.display()))?;
+        let permissions = input_file
+            .metadata()
+            .with_context(|| format!("failed to read metadata for {}", input.display()))?
+            .permissions();
+        let mut reader = BufReader::new(input_file);
+        let output_file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(output)
+            .with_context(|| format!("failed to create secret file {}", output.display()))?;
+        let mut writer = BufWriter::new(output_file);
+        let mut line = String::new();
+
+        loop {
+            line.clear();
+            let bytes = reader
+                .read_line(&mut line)
+                .with_context(|| format!("failed to read {}", input.display()))?;
+            if bytes == 0 {
+                break;
+            }
+            let obfuscated = obfuscator.enabled_line(&line);
+            writer
+                .write_all(obfuscated.as_bytes())
+                .with_context(|| format!("failed to write {}", output.display()))?;
+        }
+
+        writer
+            .flush()
+            .with_context(|| format!("failed to flush {}", output.display()))?;
+        fs::set_permissions(output, permissions)
+            .with_context(|| format!("failed to copy permissions to {}", output.display()))?;
+        Ok(())
+    })();
+
+    if result.is_err() {
+        let _ = fs::remove_file(output);
+    }
+
+    result
 }
 
 fn build_context<'a>(
@@ -725,6 +1081,10 @@ fn build_cli() -> Command {
             ("verbose", "Show full message structure with enums"),
             ("info", "Show schema summary"),
             ("secret", "Obfuscate sensitive FIX tag values"),
+            (
+                "secret-files",
+                "Write obfuscated copies of the input files and exit",
+            ),
             ("validate", "Validate FIX messages during decoding"),
         ],
     );
@@ -738,6 +1098,12 @@ fn build_cli() -> Command {
             .require_equals(false)
             .default_missing_value("true")
             .help("Force coloured output"),
+    )
+    .arg(
+        Arg::new("secret-dir")
+            .long("secret-dir")
+            .value_name("DIR")
+            .help("Directory to write generated secret files into"),
     )
     .arg(
         Arg::new("delimiter")
@@ -862,6 +1228,8 @@ struct CliOptions {
     include_trailer: bool,
     info: bool,
     secret: bool,
+    secret_files: bool,
+    secret_dir: Option<String>,
     validate: bool,
     colour: Option<bool>,
     style: OutputStyle,
@@ -920,6 +1288,8 @@ impl CliOptions {
             include_trailer: merged_flag(matches, default_matches, "trailer"),
             info: merged_flag(matches, default_matches, "info"),
             secret: merged_flag(matches, default_matches, "secret"),
+            secret_files: merged_flag(matches, default_matches, "secret-files"),
+            secret_dir: selected_value(matches, default_matches, "secret-dir").cloned(),
             validate: merged_flag(matches, default_matches, "validate"),
             colour: parse_colour(selected_value(matches, default_matches, "colour"))?,
             style: resolve_output_style(matches, default_matches, std::io::stdout().is_terminal())?,
@@ -1677,7 +2047,7 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
     use std::io::Write;
-    use tempfile::NamedTempFile;
+    use tempfile::{NamedTempFile, tempdir};
 
     fn dummy_opts(version: &str) -> CliOptions {
         CliOptions {
@@ -1696,6 +2066,8 @@ mod tests {
             include_trailer: false,
             info: false,
             secret: false,
+            secret_files: false,
+            secret_dir: None,
             validate: false,
             colour: None,
             style: OutputStyle::plain(),
@@ -1745,6 +2117,108 @@ mod tests {
         };
         let files = resolve_input_files(&opts);
         assert_eq!(files, vec!["one".to_string(), "two".to_string()]);
+    }
+
+    #[test]
+    fn multi_file_pager_requires_multiple_real_files() {
+        let opts = CliOptions {
+            paging: PagingMode::Always,
+            ..dummy_opts("44")
+        };
+        assert!(!should_use_multi_file_pager(&opts, true, &["one".into()]));
+        assert!(!should_use_multi_file_pager(
+            &opts,
+            true,
+            &["-".into(), "two".into()]
+        ));
+        assert!(should_use_multi_file_pager(
+            &opts,
+            true,
+            &["one".into(), "two".into()]
+        ));
+    }
+
+    #[test]
+    fn multi_file_pager_rejects_shell_commands() {
+        let opts = CliOptions {
+            paging: PagingMode::Always,
+            pager: Some("less -R | tee /tmp/fixdecoder.log".into()),
+            ..dummy_opts("44")
+        };
+        assert!(!should_use_multi_file_pager(
+            &opts,
+            true,
+            &["one".into(), "two".into()]
+        ));
+    }
+
+    #[test]
+    fn pager_process_spec_appends_file_paths() {
+        let dir = tempdir().expect("tempdir");
+        let first = dir.path().join("one.fix");
+        let second = dir.path().join("two.fix");
+        std::fs::write(&first, "").expect("write first");
+        std::fs::write(&second, "").expect("write second");
+
+        let spec = pager_process_spec("less -R", false, &[first.clone(), second.clone()])
+            .expect("pager process spec");
+        assert_eq!(spec.executable, OsString::from("less"));
+        let args: Vec<String> = spec
+            .args
+            .iter()
+            .map(|value| value.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            args,
+            vec![
+                "-R".to_string(),
+                first.display().to_string(),
+                second.display().to_string()
+            ]
+        );
+        assert!(spec.less_executable);
+    }
+
+    #[test]
+    fn secret_output_path_inserts_suffix_before_extension() {
+        let input = Path::new("/tmp/orders.log");
+        let output = secret_output_path(input, None).expect("secret path");
+        assert_eq!(output, Path::new("/tmp/orders.secret.log"));
+    }
+
+    #[test]
+    fn secret_output_path_uses_secret_dir_when_supplied() {
+        let input = Path::new("/tmp/orders.log");
+        let output =
+            secret_output_path(input, Some(Path::new("/var/tmp/secret"))).expect("secret path");
+        assert_eq!(output, Path::new("/var/tmp/secret/orders.secret.log"));
+    }
+
+    #[test]
+    fn validate_cli_options_rejects_secret_dir_without_secret_files() {
+        let opts = CliOptions {
+            secret_dir: Some("out".into()),
+            ..dummy_opts("44")
+        };
+        let err = validate_cli_options(&opts).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("--secret-dir requires --secret-files")
+        );
+    }
+
+    #[test]
+    fn validate_cli_options_rejects_secret_files_without_inputs() {
+        let opts = CliOptions {
+            secret_files: true,
+            files: Vec::new(),
+            ..dummy_opts("44")
+        };
+        let err = validate_cli_options(&opts).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("--secret-files requires one or more input files")
+        );
     }
 
     #[test]

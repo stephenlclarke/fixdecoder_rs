@@ -1,0 +1,43 @@
+{
+  "generated_by": "ci/generate_repeating_group_samples.py",
+  "generated_files": [
+    {
+      "file": "new_order_single_parties.fix",
+      "title": "NewOrderSingle with Parties and nested PartySubIDs",
+      "description": "Exercises NoPartyIDs(453) with two party instances and a nested NoPartySubIDs(802) group on the first party.",
+      "sources": [
+        "https://www.fixtrading.org/standards/tagvalue-online/",
+        "https://fiximate.fixtrading.org/legacy/en/FIX.4.4/body_49484950.html?find=PartyID",
+        "https://fiximate.fixtrading.org/legacy/en/FIX.4.4/body_495268.html?find=Side"
+      ]
+    },
+    {
+      "file": "new_order_single_preallocs.fix",
+      "title": "NewOrderSingle with PreAllocGrp",
+      "description": "Exercises NoAllocs(78) inside PreAllocGrp with two allocation entries.",
+      "sources": [
+        "https://fiximate.fixtrading.org/legacy/en/FIX.4.4/body_495268.html?find=Text",
+        "https://fiximate.fixtrading.org/legacy/en/FIX.4.4/body_50485157.html?find=AllocQty"
+      ]
+    },
+    {
+      "file": "allocation_instruction_orders.fix",
+      "title": "AllocationInstruction with OrdAllocGrp",
+      "description": "Exercises NoOrders(73) with two source orders contributing to one allocation.",
+      "sources": [
+        "https://fiximate.fixtrading.org/legacy/en/FIX.4.4/body_495774.html?find=AllocID",
+        "https://fiximate.fixtrading.org/legacy/en/FIX.5.0SP2/body_50485154.html"
+      ]
+    },
+    {
+      "file": "market_data_snapshot_full_refresh.fix",
+      "title": "MarketDataSnapshotFullRefresh with MDFullGrp",
+      "description": "Exercises NoMDEntries(268) with one bid and one offer entry.",
+      "sources": [
+        "https://fiximate.fixtrading.org/legacy/en/FIX.4.4/body_514887.html?find=MDFullGrp",
+        "https://fiximate.fixtrading.org/legacy/en/FIX.4.4/body_50485149.html?find=NoMDEntries",
+        "https://www.fixtrading.org/standards/json-online/"
+      ]
+    }
+  ]
+}

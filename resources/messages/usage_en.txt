@@ -77,3 +77,9 @@ Command line option examples:
     Process a FIX log file and display an order summary for each order that is processed.
 
     $ fixdecoder --summary --follow logs/fix.log
+
+    Generate obfuscated .secret copies of mixed FIX log files. Rewritten FIX
+    messages have BodyLength and CheckSum updated so they remain valid:
+
+    $ fixdecoder --secret-files logs/fix.log
+    $ fixdecoder --secret-files --secret-dir redacted logs/fix.log logs/fix2.log

@@ -1491,6 +1491,11 @@ fn colour_instrument(text: String) -> String {
 }
 
 #[cfg(test)]
+#[allow(non_snake_case)]
+#[path = "summary_appendix_d_tests.rs"]
+mod appendix_d_summary_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

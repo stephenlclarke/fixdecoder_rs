@@ -4,8 +4,10 @@
 use assert_cmd::cargo::cargo_bin_cmd;
 use predicates::prelude::PredicateBooleanExt;
 use predicates::str::contains;
+use std::fs;
 use std::io::Write;
-use tempfile::NamedTempFile;
+use std::path::Path;
+use tempfile::{NamedTempFile, tempdir};
 
 fn fix_message(body: &str) -> String {
     let soh = '\u{0001}';
@@ -27,6 +29,40 @@ fn valid_fix_message(begin_string: &str, fields: &[(&str, &str)]) -> String {
 fn run_fixdecoder(args: &[&str]) -> String {
     let assert = cargo_bin_cmd!("fixdecoder").args(args).assert().success();
     String::from_utf8_lossy(&assert.get_output().stdout).into_owned()
+}
+
+fn field_value<'a>(msg: &'a str, tag: &str) -> Option<&'a str> {
+    msg.split('\u{0001}').find_map(|fragment| {
+        let (lhs, rhs) = fragment.split_once('=')?;
+        (lhs == tag).then_some(rhs)
+    })
+}
+
+fn actual_body_length(msg: &str) -> usize {
+    let bytes = msg.as_bytes();
+    let len_pos = bytes
+        .windows(2)
+        .position(|window| window == b"9=")
+        .expect("body length tag");
+    let body_start = bytes
+        .iter()
+        .enumerate()
+        .skip(len_pos)
+        .find_map(|(idx, byte)| (*byte == 0x01).then_some(idx + 1))
+        .expect("body start");
+    let checksum_start = bytes
+        .windows(4)
+        .enumerate()
+        .rfind(|(_, window)| *window == b"\x0110=")
+        .map(|(idx, _)| idx)
+        .expect("checksum start");
+    checksum_start - body_start + 1
+}
+
+fn actual_checksum(msg: &str) -> i32 {
+    let marker = "\u{0001}10=";
+    let idx = msg.rfind(marker).expect("checksum marker");
+    msg[..idx + 1].bytes().map(i32::from).sum::<i32>() % 256
 }
 
 #[test]
@@ -68,6 +104,56 @@ fn decodes_message_from_file_path() {
         .assert()
         .success()
         .stdout(contains("BeginString"));
+}
+
+#[test]
+fn secret_files_mode_writes_valid_obfuscated_sibling_file() {
+    let dir = tempdir().expect("temp dir");
+    let input = dir.path().join("orders.log");
+    let msg = valid_fix_message(
+        "FIX.4.4",
+        &[("35", "A"), ("49", "BUY1"), ("56", "SELL1"), ("98", "0")],
+    );
+    let line = format!("INFO {} tail\n", msg.trim_end());
+    fs::write(&input, &line).expect("write mixed log");
+
+    cargo_bin_cmd!("fixdecoder")
+        .arg("--secret-files")
+        .arg(&input)
+        .assert()
+        .success()
+        .stdout(contains("orders.secret.log"));
+
+    let secret_path = Path::new(&input).with_file_name("orders.secret.log");
+    let secret = fs::read_to_string(&secret_path).expect("read secret file");
+    let original = fs::read_to_string(&input).expect("read original file");
+
+    assert_eq!(original, line, "input file should remain unchanged");
+    assert!(secret.starts_with("INFO 8=FIX.4.4"));
+    assert!(secret.contains("49=SenderCompID0001"));
+    assert!(secret.contains("56=TargetCompID0001"));
+    assert!(secret.ends_with(" tail\n"));
+
+    let start = secret.find("8=FIX.4.4").expect("find FIX start");
+    let checksum_start = secret[start..]
+        .find("\u{0001}10=")
+        .map(|idx| start + idx + 1)
+        .expect("find checksum");
+    let checksum_end = secret[checksum_start..]
+        .find('\u{0001}')
+        .map(|idx| checksum_start + idx)
+        .expect("find checksum end");
+    let fix = &secret[start..=checksum_end];
+
+    let declared_body_length = field_value(fix, "9")
+        .and_then(|value| value.parse::<usize>().ok())
+        .expect("declared body length");
+    let declared_checksum = field_value(fix, "10")
+        .and_then(|value| value.parse::<i32>().ok())
+        .expect("declared checksum");
+
+    assert_eq!(declared_body_length, actual_body_length(fix));
+    assert_eq!(declared_checksum, actual_checksum(fix));
 }
 
 #[test]

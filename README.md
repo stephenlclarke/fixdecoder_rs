@@ -71,7 +71,7 @@ The decoder now also exposes bat-style presentation controls for terminal use. Y
 - Dictionaries: `--xml`, `--fix`, `--info`, `--message`, `--component`, `--tag`
 - Output/layout: `--column`, `--verbose`, `--header`, `--trailer`, `--colour`, `--delimiter`
 - Bat-style viewing: `--style`, `--plain`, `--number`, `--paging`, `--pager`, `--nowrap`
-- Processing modes: `--follow`, `--validate`, `--secret`, `--summary`
+- Processing modes: `--follow`, `--validate`, `--secret`, `--secret-files`, `--summary`
 
 ### `--xml`
 
@@ -95,7 +95,7 @@ Use these flags to explore the active FIX dictionary. `--verbose` adds detail / 
 
 ### `--message[=<NAME|MsgType>]`
 
-Browse messages. With no value, list all message types (use --`column` for a compact view). The listing is grouped into `Session/Admin` and business buckets such as `Order Flow`, `Quotes & Pricing`, and `Market Data`. Business bucketing now uses an explicit reviewed `MsgType` mapping rather than name heuristics, generated from official FIX Trading Community online-specification category tables. With a name or MsgType (e.g., `D` or `NewOrderSingle`), render the message structure (fields, components, repeating groups); `--header`/`--trailer` include session blocks. Reports “Message not found” if absent.
+Browse messages. With no value, list all message types (use --`column` for a compact view). The listing is grouped into `Session/Admin` and business buckets such as `Order Flow`, `Quotes & Pricing`, and `Market Data`. The `Session/Admin` split comes from the FIX dictionary metadata (`msgcat=admin`), while the business buckets use an explicit reviewed `MsgType` mapping rather than name heuristics. That mapping is generated from the official FIX Trading Community business-area pages for [Pre-Trade](https://www.fixtrading.org/online-specification/business-area-pretrade/), [Trade](https://www.fixtrading.org/online-specification/business-area-trade/), [Post-Trade](https://www.fixtrading.org/online-specification/business-area-posttrade/), and [Infrastructure](https://www.fixtrading.org/online-specification/business-area-infrastructure/). With a name or MsgType (e.g., `D` or `NewOrderSingle`), render the message structure (fields, components, repeating groups); `--header`/`--trailer` include session blocks. Reports “Message not found” if absent.
 
 ### `--component[=<NAME>]`
 
@@ -112,6 +112,10 @@ Validate each decoded FIX message against the active dictionary (honours `--fix`
 ### `--secret`
 
 Obfuscate sensitive FIX fields while decoding. When enabled, values for a predefined set of sensitive tags (e.g., session IDs, sender/target IDs) are replaced with stable aliases (e.g., `SenderCompID0001`) so logs stay readable without exposing real identifiers. Obfuscation is applied per line/message and resets between files; disabled by default.
+
+### `--secret-files`
+
+Generate obfuscated `.secret` copies of the input files and exit. This mode is meant for mixed logfiles: each detected FIX message inside a line is rewritten with stable aliases for sensitive tags, and the rewritten message has `BodyLength (9)` and `CheckSum (10)` recalculated so it remains valid FIX after redaction. By default, each output sits next to its source with `.secret` inserted before the final extension, for example `orders.log` becomes `orders.secret.log`. Existing files are never overwritten. Use `--secret-dir=<DIR>` to write all generated secret files into a separate directory instead of beside the inputs.
 
 ### `--colour[=yes|no|auto]`
 
@@ -164,7 +168,15 @@ Stream input like `tail -f`. Keeps reading and decoding as new data arrives on s
 
 ### `--summary`
 
-Track FIX order lifecycles and emit a summary instead of full decoded messages. When enabled, each application message that can be tied to an order flow is consumed into an order tracker (keyed by `OrderID`/`ClOrdID`/`OrigClOrdID`), updating state, quantities, prices, and events. Standard FIX session/admin messages such as `Heartbeat`, `Logon`, `Logout`, and `SequenceReset` are ignored in this mode, and application messages without a resolvable order identifier are skipped as non-order flow traffic. Invalid order-flow messages are still shown in the timeline and raw FIX list; in the timeline only the invalid suffix is red, while the original FIX `Text` value keeps its normal colour. Message-count tables are grouped so session/admin traffic is separated from business traffic, and business messages are bucketed into families such as order flow, quotes/pricing, and market data using an explicit `MsgType` taxonomy rather than label heuristics. On an interactive terminal, `--summary` now opens a built-in split pager by default; the left pane stays fixed and shows the current order block plus cumulative order/message counts from the start of the file through the bottom of the visible right-hand pane. Use `--paging=never` if you want the plain text summary written directly to stdout. At the end (or live in `--follow` mode) it prints a concise per-order summary/footer using the chosen display delimiter. This mode suppresses the usual prettified message output; use it to monitor order state across a stream or log.
+Track FIX order lifecycles and emit a summary instead of full decoded messages. When enabled, each application message that can be tied to an order flow is consumed into an order tracker (keyed by `OrderID`/`ClOrdID`/`OrigClOrdID`), updating state, quantities, prices, and events. Standard FIX session/admin messages such as `Heartbeat`, `Logon`, `Logout`, and `SequenceReset` are ignored in this mode, and application messages without a resolvable order identifier are skipped as non-order flow traffic. Invalid order-flow messages are still shown in the timeline and raw FIX list; in the timeline only the invalid suffix is red, while the original FIX `Text` value keeps its normal colour. Message-count tables are grouped so session/admin traffic is separated from business traffic, and business messages are bucketed into families such as order flow, quotes/pricing, and market data using the same explicit `MsgType` taxonomy described in `--message`, sourced from the official FIX Trading Community business-area pages. On an interactive terminal, `--summary` now opens a built-in split pager by default; the left pane stays fixed and shows the current order block plus cumulative order/message counts from the start of the file through the bottom of the visible right-hand pane. Use `--paging=never` if you want the plain text summary written directly to stdout. At the end (or live in `--follow` mode) it prints a concise per-order summary/footer using the chosen display delimiter. This mode suppresses the usual prettified message output; use it to monitor order state across a stream or log.
+
+## Appendix D Samples
+
+The repo now includes a generated FIX sample corpus for the FIX Protocol Appendix D / "Order State Changes" scenarios under `resources/examples/appendix_d/`. The messages are synthetic but fully valid FIX 4.4 tag-value messages with recalculated `BodyLength (9)` and `CheckSum (10)`, generated from the official FIX Trading Community [Order State Changes HTML](https://www.fixtrading.org/online-specification/order-state-changes/) and companion [PDF](https://www.fixtrading.org/wp-content/uploads/download-manager-files/FIX-Latest-as-of-EP284-Order-State-Changes.pdf). The corpus contains one main stream per scenario plus short alternate streams for the italic branch rows, a combined `all.fixlog`, and a `manifest.json` index.
+
+## Repeating Group Samples
+
+The repo also includes a small checked-in FIX 4.4 repeating-group corpus under `resources/examples/repeating_groups/`. These examples are synthetic but validation-clean tag-value FIX messages covering common structures such as `NoPartyIDs (453)` with nested `NoPartySubIDs (802)`, `NoAllocs (78)`, `NoOrders (73)`, and `NoMDEntries (268)`. The message layouts are based on the official FIX Trading Community [TagValue Encoding](https://www.fixtrading.org/standards/tagvalue-online/) guidance plus the corresponding FIXimate message/component pages for [Parties](https://fiximate.fixtrading.org/legacy/en/FIX.4.4/body_49484950.html?find=PartyID), [PreAllocGrp](https://fiximate.fixtrading.org/legacy/en/FIX.4.4/body_50485157.html?find=AllocQty), [AllocationInstruction](https://fiximate.fixtrading.org/legacy/en/FIX.4.4/body_495774.html?find=AllocID), and [MDFullGrp](https://fiximate.fixtrading.org/legacy/en/FIX.4.4/body_50485149.html?find=NoMDEntries). The directory contains one file per sample, a combined `all.fixlog`, and a `manifest.json` index.
 
 # Download it
 
@@ -176,7 +188,9 @@ Windows executables embed the Marvin icon from `resources/icons/marvin.ico`. On 
 
 Build it from source. This now requires `bash` version 5+ and a recent `Rust` toolchain (the project is tested with Rust 1.91+).
 Run `make icons` if you want to regenerate the tracked icon assets from `resources/icons/marvin.png`.
-Run `make message-groups` if you want to refresh the tracked `MsgType` bucket table from the official FIX Trading Community online specification pages.
+Run `make message-groups` if you want to refresh the tracked `MsgType` bucket table from the official FIX Trading Community online specification pages for [Pre-Trade](https://www.fixtrading.org/online-specification/business-area-pretrade/), [Trade](https://www.fixtrading.org/online-specification/business-area-trade/), [Post-Trade](https://www.fixtrading.org/online-specification/business-area-posttrade/), and [Infrastructure](https://www.fixtrading.org/online-specification/business-area-infrastructure/).
+Run `make appendix-d-samples` if you want to regenerate the tracked Appendix D sample corpus from the official FIX Trading Community order-state matrices.
+Run `make repeating-group-samples` if you want to regenerate the tracked repeating-group FIX examples.
 
 ```bash
 ❯ bash --version

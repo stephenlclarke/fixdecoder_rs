@@ -1,0 +1,1005 @@
+{
+  "source_html": "https://www.fixtrading.org/online-specification/order-state-changes/",
+  "source_pdf": "https://www.fixtrading.org/wp-content/uploads/download-manager-files/FIX-Latest-as-of-EP284-Order-State-Changes.pdf",
+  "generated_files": [
+    {
+      "file": "exchange/a_1_a_alt01_a_1_a_filled_order_after_order_rests_on_book.fix",
+      "section": "exchange",
+      "scenario_id": "A.1.a",
+      "title": "A.1.a - Filled order after order rests on book",
+      "variant": "alt01",
+      "variant_note": "If order is rejected by salesperson",
+      "message_count": 2
+    },
+    {
+      "file": "exchange/a_1_a_alt02_a_1_a_filled_order_after_order_rests_on_book.fix",
+      "section": "exchange",
+      "scenario_id": "A.1.a",
+      "title": "A.1.a - Filled order after order rests on book",
+      "variant": "alt02",
+      "variant_note": "If order is rejected by trader/exchange",
+      "message_count": 3
+    },
+    {
+      "file": "exchange/a_1_a_main_a_1_a_filled_order_after_order_rests_on_book.fix",
+      "section": "exchange",
+      "scenario_id": "A.1.a",
+      "title": "A.1.a - Filled order after order rests on book",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 5
+    },
+    {
+      "file": "exchange/a_1_b_alt01_a_1_b_part_filled_day_order_after_order_rests_on_book_done_for_day.fix",
+      "section": "exchange",
+      "scenario_id": "A.1.b",
+      "title": "A.1.b - Part-filled day order after order rests on book, done for day",
+      "variant": "alt01",
+      "variant_note": "If order is rejected by the exchange",
+      "message_count": 2
+    },
+    {
+      "file": "exchange/a_1_b_main_a_1_b_part_filled_day_order_after_order_rests_on_book_done_for_day.fix",
+      "section": "exchange",
+      "scenario_id": "A.1.b",
+      "title": "A.1.b - Part-filled day order after order rests on book, done for day",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 5
+    },
+    {
+      "file": "exchange/a_1_c_alt01_a_1_c_order_filled_upon_hitting_the_book.fix",
+      "section": "exchange",
+      "scenario_id": "A.1.c",
+      "title": "A.1.c - Order filled upon hitting the book",
+      "variant": "alt01",
+      "variant_note": "If order is rejected by the exchange",
+      "message_count": 2
+    },
+    {
+      "file": "exchange/a_1_c_main_a_1_c_order_filled_upon_hitting_the_book.fix",
+      "section": "exchange",
+      "scenario_id": "A.1.c",
+      "title": "A.1.c - Order filled upon hitting the book",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 2
+    },
+    {
+      "file": "exchange/a_1_d_alt01_a_1_d_order_partially_filled_upon_hitting_the_book.fix",
+      "section": "exchange",
+      "scenario_id": "A.1.d",
+      "title": "A.1.d - Order partially filled upon hitting the book",
+      "variant": "alt01",
+      "variant_note": "If order is rejected by the exchange",
+      "message_count": 2
+    },
+    {
+      "file": "exchange/a_1_d_main_a_1_d_order_partially_filled_upon_hitting_the_book.fix",
+      "section": "exchange",
+      "scenario_id": "A.1.d",
+      "title": "A.1.d - Order partially filled upon hitting the book",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 2
+    },
+    {
+      "file": "exchange/i_1_a_alt01_i_1_a_fill_or_kill_order_that_cannot_be_filled.fix",
+      "section": "exchange",
+      "scenario_id": "I.1.a",
+      "title": "I.1.a - Fill or Kill order that cannot be filled",
+      "variant": "alt01",
+      "variant_note": "If order is rejected by sell-side (broker,the exchange, ECN)",
+      "message_count": 2
+    },
+    {
+      "file": "exchange/i_1_a_alt02_i_1_a_fill_or_kill_order_that_cannot_be_filled.fix",
+      "section": "exchange",
+      "scenario_id": "I.1.a",
+      "title": "I.1.a - Fill or Kill order that cannot be filled",
+      "variant": "alt02",
+      "variant_note": "If order is rejected by sell-side (broker, exchange, ECN)",
+      "message_count": 5
+    },
+    {
+      "file": "exchange/i_1_a_main_i_1_a_fill_or_kill_order_that_cannot_be_filled.fix",
+      "section": "exchange",
+      "scenario_id": "I.1.a",
+      "title": "I.1.a - Fill or Kill order that cannot be filled",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 5
+    },
+    {
+      "file": "exchange/i_1_b_alt01_i_1_b_immediate_or_cancel_order_that_cannot_immediately_be_hit_completely.fix",
+      "section": "exchange",
+      "scenario_id": "I.1.b",
+      "title": "I.1.b - Immediate or Cancel order that cannot immediately be hit completely",
+      "variant": "alt01",
+      "variant_note": "If order is rejected by sell-side (broker, exchange, ECN)",
+      "message_count": 2
+    },
+    {
+      "file": "exchange/i_1_b_alt02_i_1_b_immediate_or_cancel_order_that_cannot_immediately_be_hit_completely.fix",
+      "section": "exchange",
+      "scenario_id": "I.1.b",
+      "title": "I.1.b - Immediate or Cancel order that cannot immediately be hit completely",
+      "variant": "alt02",
+      "variant_note": "If order is rejected by sell-side (broker, exchange, ECN)",
+      "message_count": 6
+    },
+    {
+      "file": "exchange/i_1_b_main_i_1_b_immediate_or_cancel_order_that_cannot_immediately_be_hit_completely.fix",
+      "section": "exchange",
+      "scenario_id": "I.1.b",
+      "title": "I.1.b - Immediate or Cancel order that cannot immediately be hit completely",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 6
+    },
+    {
+      "file": "general/a_1_a_alt01_a_1_a_filled_order.fix",
+      "section": "general",
+      "scenario_id": "A.1.a",
+      "title": "A.1.a - Filled order",
+      "variant": "alt01",
+      "variant_note": "If order is rejected by salesperson",
+      "message_count": 2
+    },
+    {
+      "file": "general/a_1_a_alt02_a_1_a_filled_order.fix",
+      "section": "general",
+      "scenario_id": "A.1.a",
+      "title": "A.1.a - Filled order",
+      "variant": "alt02",
+      "variant_note": "If order is rejected by trader/exchange",
+      "message_count": 3
+    },
+    {
+      "file": "general/a_1_a_main_a_1_a_filled_order.fix",
+      "section": "general",
+      "scenario_id": "A.1.a",
+      "title": "A.1.a - Filled order",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 5
+    },
+    {
+      "file": "general/a_1_b_alt01_a_1_b_part_filled_day_order_done_for_day.fix",
+      "section": "general",
+      "scenario_id": "A.1.b",
+      "title": "A.1.b - Part-filled day order, done for day",
+      "variant": "alt01",
+      "variant_note": "If order is rejected",
+      "message_count": 2
+    },
+    {
+      "file": "general/a_1_b_main_a_1_b_part_filled_day_order_done_for_day.fix",
+      "section": "general",
+      "scenario_id": "A.1.b",
+      "title": "A.1.b - Part-filled day order, done for day",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 5
+    },
+    {
+      "file": "general/b_1_a_alt01_b_1_a_cancel_request_issued_for_a_zero_filled_order.fix",
+      "section": "general",
+      "scenario_id": "B.1.a",
+      "title": "B.1.a - Cancel request issued for a zero-filled order",
+      "variant": "alt01",
+      "variant_note": "If order is rejected",
+      "message_count": 2
+    },
+    {
+      "file": "general/b_1_a_alt02_b_1_a_cancel_request_issued_for_a_zero_filled_order.fix",
+      "section": "general",
+      "scenario_id": "B.1.a",
+      "title": "B.1.a - Cancel request issued for a zero-filled order",
+      "variant": "alt02",
+      "variant_note": "If rejected by salesperson",
+      "message_count": 4
+    },
+    {
+      "file": "general/b_1_a_alt03_b_1_a_cancel_request_issued_for_a_zero_filled_order.fix",
+      "section": "general",
+      "scenario_id": "B.1.a",
+      "title": "B.1.a - Cancel request issued for a zero-filled order",
+      "variant": "alt03",
+      "variant_note": "If rejected by trader/exchange",
+      "message_count": 5
+    },
+    {
+      "file": "general/b_1_a_main_b_1_a_cancel_request_issued_for_a_zero_filled_order.fix",
+      "section": "general",
+      "scenario_id": "B.1.a",
+      "title": "B.1.a - Cancel request issued for a zero-filled order",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 5
+    },
+    {
+      "file": "general/b_1_b_alt01_b_1_b_cancel_request_issued_for_a_part_filled_order_executions_occur_whilst_cancel_request_is_active.fix",
+      "section": "general",
+      "scenario_id": "B.1.b",
+      "title": "B.1.b - Cancel request issued for a part-filled order - executions occur whilst cancel request is active",
+      "variant": "alt01",
+      "variant_note": "If order is rejected",
+      "message_count": 2
+    },
+    {
+      "file": "general/b_1_b_alt02_b_1_b_cancel_request_issued_for_a_part_filled_order_executions_occur_whilst_cancel_request_is_active.fix",
+      "section": "general",
+      "scenario_id": "B.1.b",
+      "title": "B.1.b - Cancel request issued for a part-filled order - executions occur whilst cancel request is active",
+      "variant": "alt02",
+      "variant_note": "If request is rejected",
+      "message_count": 6
+    },
+    {
+      "file": "general/b_1_b_alt03_b_1_b_cancel_request_issued_for_a_part_filled_order_executions_occur_whilst_cancel_request_is_active.fix",
+      "section": "general",
+      "scenario_id": "B.1.b",
+      "title": "B.1.b - Cancel request issued for a part-filled order - executions occur whilst cancel request is active",
+      "variant": "alt03",
+      "variant_note": "If request is rejected",
+      "message_count": 8
+    },
+    {
+      "file": "general/b_1_b_main_b_1_b_cancel_request_issued_for_a_part_filled_order_executions_occur_whilst_cancel_request_is_active.fix",
+      "section": "general",
+      "scenario_id": "B.1.b",
+      "title": "B.1.b - Cancel request issued for a part-filled order - executions occur whilst cancel request is active",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 8
+    },
+    {
+      "file": "general/b_1_c_alt01_b_1_c_cancel_request_issued_for_an_order_that_becomes_filled_before_cancel_request_can_be_accepted.fix",
+      "section": "general",
+      "scenario_id": "B.1.c",
+      "title": "B.1.c - Cancel request issued for an order that becomes filled before cancel request can be accepted",
+      "variant": "alt01",
+      "variant_note": "If order is rejected",
+      "message_count": 2
+    },
+    {
+      "file": "general/b_1_c_alt02_b_1_c_cancel_request_issued_for_an_order_that_becomes_filled_before_cancel_request_can_be_accepted.fix",
+      "section": "general",
+      "scenario_id": "B.1.c",
+      "title": "B.1.c - Cancel request issued for an order that becomes filled before cancel request can be accepted",
+      "variant": "alt02",
+      "variant_note": "If request is rejected",
+      "message_count": 6
+    },
+    {
+      "file": "general/b_1_c_main_b_1_c_cancel_request_issued_for_an_order_that_becomes_filled_before_cancel_request_can_be_accepted.fix",
+      "section": "general",
+      "scenario_id": "B.1.c",
+      "title": "B.1.c - Cancel request issued for an order that becomes filled before cancel request can be accepted",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 8
+    },
+    {
+      "file": "general/b_1_d_main_b_1_d_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged.fix",
+      "section": "general",
+      "scenario_id": "B.1.d",
+      "title": "B.1.d - Cancel request issued for an order that has not yet been acknowledged",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 9
+    },
+    {
+      "file": "general/b_1_e_main_b_1_e_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged_the_acknowledgment_and_the_cancel_request_cross.fix",
+      "section": "general",
+      "scenario_id": "B.1.e",
+      "title": "B.1.e - Cancel request issued for an order that has not yet been acknowledged - the acknowledgment and the cancel request 'cross'",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 5
+    },
+    {
+      "file": "general/b_1_f_main_b_1_f_cancel_request_issued_for_an_unknown_order.fix",
+      "section": "general",
+      "scenario_id": "B.1.f",
+      "title": "B.1.f - Cancel request issued for an unknown order",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 2
+    },
+    {
+      "file": "general/c_1_a_alt01_c_1_a_zero_filled_order_cancel_replace_request_issued_to_increase_order_qty.fix",
+      "section": "general",
+      "scenario_id": "C.1.a",
+      "title": "C.1.a - Zero-filled order, cancel/replace request issued to increase order qty",
+      "variant": "alt01",
+      "variant_note": "If order is rejected by sell-side (broker, exchange, ECN)",
+      "message_count": 2
+    },
+    {
+      "file": "general/c_1_a_alt02_c_1_a_zero_filled_order_cancel_replace_request_issued_to_increase_order_qty.fix",
+      "section": "general",
+      "scenario_id": "C.1.a",
+      "title": "C.1.a - Zero-filled order, cancel/replace request issued to increase order qty",
+      "variant": "alt02",
+      "variant_note": "If request is rejected by salesperson",
+      "message_count": 4
+    },
+    {
+      "file": "general/c_1_a_alt03_c_1_a_zero_filled_order_cancel_replace_request_issued_to_increase_order_qty.fix",
+      "section": "general",
+      "scenario_id": "C.1.a",
+      "title": "C.1.a - Zero-filled order, cancel/replace request issued to increase order qty",
+      "variant": "alt03",
+      "variant_note": "If rejected by trader/exchange",
+      "message_count": 5
+    },
+    {
+      "file": "general/c_1_a_main_c_1_a_zero_filled_order_cancel_replace_request_issued_to_increase_order_qty.fix",
+      "section": "general",
+      "scenario_id": "C.1.a",
+      "title": "C.1.a - Zero-filled order, cancel/replace request issued to increase order qty",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 7
+    },
+    {
+      "file": "general/c_1_b_alt01_c_1_b_part_filled_order_followed_by_cancel_replace_request_to_increase_order_qty_execution_occurs_whilst_order_is_pending_replace.fix",
+      "section": "general",
+      "scenario_id": "C.1.b",
+      "title": "C.1.b - Part-filled order, followed by cancel/replace request to increase order qty, execution occurs whilst order is pending replace",
+      "variant": "alt01",
+      "variant_note": "If order is rejected by sell-side (broker, exchange, ECN)",
+      "message_count": 2
+    },
+    {
+      "file": "general/c_1_b_alt02_c_1_b_part_filled_order_followed_by_cancel_replace_request_to_increase_order_qty_execution_occurs_whilst_order_is_pending_replace.fix",
+      "section": "general",
+      "scenario_id": "C.1.b",
+      "title": "C.1.b - Part-filled order, followed by cancel/replace request to increase order qty, execution occurs whilst order is pending replace",
+      "variant": "alt02",
+      "variant_note": "If request is rejected",
+      "message_count": 5
+    },
+    {
+      "file": "general/c_1_b_alt03_c_1_b_part_filled_order_followed_by_cancel_replace_request_to_increase_order_qty_execution_occurs_whilst_order_is_pending_replace.fix",
+      "section": "general",
+      "scenario_id": "C.1.b",
+      "title": "C.1.b - Part-filled order, followed by cancel/replace request to increase order qty, execution occurs whilst order is pending replace",
+      "variant": "alt03",
+      "variant_note": "If request is rejected",
+      "message_count": 7
+    },
+    {
+      "file": "general/c_1_b_main_c_1_b_part_filled_order_followed_by_cancel_replace_request_to_increase_order_qty_execution_occurs_whilst_order_is_pending_replace.fix",
+      "section": "general",
+      "scenario_id": "C.1.b",
+      "title": "C.1.b - Part-filled order, followed by cancel/replace request to increase order qty, execution occurs whilst order is pending replace",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 8
+    },
+    {
+      "file": "general/c_1_c_alt01_c_1_c_filled_order_followed_by_cancel_replace_request_to_increase_order_quantity.fix",
+      "section": "general",
+      "scenario_id": "C.1.c",
+      "title": "C.1.c - Filled order, followed by cancel/replace request to increase order quantity",
+      "variant": "alt01",
+      "variant_note": "If order is rejected by sell-side (broker, exchange, ECN)",
+      "message_count": 2
+    },
+    {
+      "file": "general/c_1_c_alt02_c_1_c_filled_order_followed_by_cancel_replace_request_to_increase_order_quantity.fix",
+      "section": "general",
+      "scenario_id": "C.1.c",
+      "title": "C.1.c - Filled order, followed by cancel/replace request to increase order quantity",
+      "variant": "alt02",
+      "variant_note": "If request is rejected",
+      "message_count": 5
+    },
+    {
+      "file": "general/c_1_c_alt03_c_1_c_filled_order_followed_by_cancel_replace_request_to_increase_order_quantity.fix",
+      "section": "general",
+      "scenario_id": "C.1.c",
+      "title": "C.1.c - Filled order, followed by cancel/replace request to increase order quantity",
+      "variant": "alt03",
+      "variant_note": "If request is rejected",
+      "message_count": 6
+    },
+    {
+      "file": "general/c_1_c_main_c_1_c_filled_order_followed_by_cancel_replace_request_to_increase_order_quantity.fix",
+      "section": "general",
+      "scenario_id": "C.1.c",
+      "title": "C.1.c - Filled order, followed by cancel/replace request to increase order quantity",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 7
+    },
+    {
+      "file": "general/c_2_a_alt01_c_2_a_cancel_replace_request_not_for_quantity_change_is_rejected_as_a_fill_has_occurred.fix",
+      "section": "general",
+      "scenario_id": "C.2.a",
+      "title": "C.2.a - Cancel/replace request (not for quantity change) is rejected as a fill has occurred",
+      "variant": "alt01",
+      "variant_note": "If order is rejected by sell-side (broker, exchange, ECN)",
+      "message_count": 2
+    },
+    {
+      "file": "general/c_2_a_main_c_2_a_cancel_replace_request_not_for_quantity_change_is_rejected_as_a_fill_has_occurred.fix",
+      "section": "general",
+      "scenario_id": "C.2.a",
+      "title": "C.2.a - Cancel/replace request (not for quantity change) is rejected as a fill has occurred",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 6
+    },
+    {
+      "file": "general/c_3_a_alt01_c_3_a_cancel_replace_request_sent_whilst_execution_is_being_reported_the_requested_order_qty_exceeds_the_cum_qty_order_is_replaced_then_filled.fix",
+      "section": "general",
+      "scenario_id": "C.3.a",
+      "title": "C.3.a - Cancel/replace request sent whilst execution is being reported - the requested order qty exceeds the cum qty. Order is replaced then filled",
+      "variant": "alt01",
+      "variant_note": "If order is rejected",
+      "message_count": 2
+    },
+    {
+      "file": "general/c_3_a_alt02_c_3_a_cancel_replace_request_sent_whilst_execution_is_being_reported_the_requested_order_qty_exceeds_the_cum_qty_order_is_replaced_then_filled.fix",
+      "section": "general",
+      "scenario_id": "C.3.a",
+      "title": "C.3.a - Cancel/replace request sent whilst execution is being reported - the requested order qty exceeds the cum qty. Order is replaced then filled",
+      "variant": "alt02",
+      "variant_note": "If request is rejected by salesperson",
+      "message_count": 6
+    },
+    {
+      "file": "general/c_3_a_alt03_c_3_a_cancel_replace_request_sent_whilst_execution_is_being_reported_the_requested_order_qty_exceeds_the_cum_qty_order_is_replaced_then_filled.fix",
+      "section": "general",
+      "scenario_id": "C.3.a",
+      "title": "C.3.a - Cancel/replace request sent whilst execution is being reported - the requested order qty exceeds the cum qty. Order is replaced then filled",
+      "variant": "alt03",
+      "variant_note": "If request is rejected by trader/exchange",
+      "message_count": 8
+    },
+    {
+      "file": "general/c_3_a_main_c_3_a_cancel_replace_request_sent_whilst_execution_is_being_reported_the_requested_order_qty_exceeds_the_cum_qty_order_is_replaced_then_filled.fix",
+      "section": "general",
+      "scenario_id": "C.3.a",
+      "title": "C.3.a - Cancel/replace request sent whilst execution is being reported - the requested order qty exceeds the cum qty. Order is replaced then filled",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 9
+    },
+    {
+      "file": "general/c_3_b_alt01_c_3_b_cancel_replace_request_sent_whilst_execution_is_being_reported_the_requested_order_qty_equals_the_cum_qty_order_qty_is_amended_to_cum_qty.fix",
+      "section": "general",
+      "scenario_id": "C.3.b",
+      "title": "C.3.b - Cancel/replace request sent whilst execution is being reported - the requested order qty equals the cum qty - order qty is amended to cum qty",
+      "variant": "alt01",
+      "variant_note": "If order is rejected by sell-side (broker, exchange, ECN)",
+      "message_count": 2
+    },
+    {
+      "file": "general/c_3_b_main_c_3_b_cancel_replace_request_sent_whilst_execution_is_being_reported_the_requested_order_qty_equals_the_cum_qty_order_qty_is_amended_to_cum_qty.fix",
+      "section": "general",
+      "scenario_id": "C.3.b",
+      "title": "C.3.b - Cancel/replace request sent whilst execution is being reported - the requested order qty equals the cum qty - order qty is amended to cum qty",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 5
+    },
+    {
+      "file": "general/c_3_c_alt01_c_3_c_cancel_replace_request_sent_whilst_execution_is_being_reported_the_requested_order_qty_is_below_cum_qty_order_qty_is_amended_to_cum_qty.fix",
+      "section": "general",
+      "scenario_id": "C.3.c",
+      "title": "C.3.c - Cancel/replace request sent whilst execution is being reported - the requested order qty is below cum qty - order qty is amended to cum qty",
+      "variant": "alt01",
+      "variant_note": "If order is rejected by sell-side (broker, exchange, ECN)",
+      "message_count": 2
+    },
+    {
+      "file": "general/c_3_c_main_c_3_c_cancel_replace_request_sent_whilst_execution_is_being_reported_the_requested_order_qty_is_below_cum_qty_order_qty_is_amended_to_cum_qty.fix",
+      "section": "general",
+      "scenario_id": "C.3.c",
+      "title": "C.3.c - Cancel/replace request sent whilst execution is being reported - the requested order qty is below cum qty - order qty is amended to cum qty",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 5
+    },
+    {
+      "file": "general/d_1_a_alt01_d_1_a_one_cancel_replace_request_is_issued_which_is_accepted_another_one_is_issued_which_is_also_accepted.fix",
+      "section": "general",
+      "scenario_id": "D.1.a",
+      "title": "D.1.a - One cancel/replace request is issued which is accepted - another one is issued which is also accepted",
+      "variant": "alt01",
+      "variant_note": "If order is rejected by sell-side (broker, exchange, ECN)",
+      "message_count": 2
+    },
+    {
+      "file": "general/d_1_a_main_d_1_a_one_cancel_replace_request_is_issued_which_is_accepted_another_one_is_issued_which_is_also_accepted.fix",
+      "section": "general",
+      "scenario_id": "D.1.a",
+      "title": "D.1.a - One cancel/replace request is issued which is accepted - another one is issued which is also accepted",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 13
+    },
+    {
+      "file": "general/d_1_b_alt01_d_1_b_one_cancel_replace_request_is_issued_which_is_rejected_before_order_becomes_pending_replace_then_another_one_is_issued_which_is_accepted.fix",
+      "section": "general",
+      "scenario_id": "D.1.b",
+      "title": "D.1.b - One cancel/replace request is issued which is rejected before order becomes pending replace - then another one is issued which is accepted",
+      "variant": "alt01",
+      "variant_note": "If order is rejected by sell-side (broker, exchange, ECN)",
+      "message_count": 2
+    },
+    {
+      "file": "general/d_1_b_main_d_1_b_one_cancel_replace_request_is_issued_which_is_rejected_before_order_becomes_pending_replace_then_another_one_is_issued_which_is_accepted.fix",
+      "section": "general",
+      "scenario_id": "D.1.b",
+      "title": "D.1.b - One cancel/replace request is issued which is rejected before order becomes pending replace - then another one is issued which is accepted",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 11
+    },
+    {
+      "file": "general/d_1_c_alt01_d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted.fix",
+      "section": "general",
+      "scenario_id": "D.1.c",
+      "title": "D.1.c - One cancel/replace request is issued which is rejected after it is in pending replace - then another one is issued which is accepted",
+      "variant": "alt01",
+      "variant_note": "If order is rejected by sell-side (broker, exchange, ECN)",
+      "message_count": 2
+    },
+    {
+      "file": "general/d_1_c_alt02_d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted.fix",
+      "section": "general",
+      "scenario_id": "D.1.c",
+      "title": "D.1.c - One cancel/replace request is issued which is rejected after it is in pending replace - then another one is issued which is accepted",
+      "variant": "alt02",
+      "variant_note": "If request is rejected (e.g. by trader/exchange)",
+      "message_count": 11
+    },
+    {
+      "file": "general/d_1_c_main_d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted.fix",
+      "section": "general",
+      "scenario_id": "D.1.c",
+      "title": "D.1.c - One cancel/replace request is issued which is rejected after it is in pending replace - then another one is issued which is accepted",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 12
+    },
+    {
+      "file": "general/d_2_a_main_d_2_a_one_cancel_replace_request_is_issued_followed_immediately_by_another_broker_processes_sequentially.fix",
+      "section": "general",
+      "scenario_id": "D.2.a",
+      "title": "D.2.a - One cancel/replace request is issued followed immediately by another - broker processes sequentially",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 10
+    },
+    {
+      "file": "general/d_2_b_main_d_2_b_one_cancel_replace_request_is_issued_followed_immediately_by_another_broker_processes_pending_replaces_before_replaces.fix",
+      "section": "general",
+      "scenario_id": "D.2.b",
+      "title": "D.2.b - One cancel/replace request is issued followed immediately by another - broker processes pending replaces before replaces",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 10
+    },
+    {
+      "file": "general/d_2_c_main_d_2_c_one_cancel_replace_request_is_issued_followed_immediately_by_another_both_are_rejected.fix",
+      "section": "general",
+      "scenario_id": "D.2.c",
+      "title": "D.2.c - One cancel/replace request is issued followed immediately by another - both are rejected",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 10
+    },
+    {
+      "file": "general/d_2_d_main_d_2_d_one_cancel_replace_request_is_issued_followed_immediately_by_another_broker_rejects_the_second_as_order_is_pending_replace.fix",
+      "section": "general",
+      "scenario_id": "D.2.d",
+      "title": "D.2.d - One cancel/replace request is issued followed immediately by another - broker rejects the second as order is pending replace",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 9
+    },
+    {
+      "file": "general/e_1_a_main_e_1_a_telephoned_order.fix",
+      "section": "general",
+      "scenario_id": "E.1.a",
+      "title": "E.1.a - Telephoned order",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 4
+    },
+    {
+      "file": "general/e_1_b_alt01_e_1_b_unsolicited_cancel_of_a_part_filled_order.fix",
+      "section": "general",
+      "scenario_id": "E.1.b",
+      "title": "E.1.b - Unsolicited cancel of a part-filled order",
+      "variant": "alt01",
+      "variant_note": "If order is rejected by sell-side (broker, exchange, ECN)",
+      "message_count": 2
+    },
+    {
+      "file": "general/e_1_b_main_e_1_b_unsolicited_cancel_of_a_part_filled_order.fix",
+      "section": "general",
+      "scenario_id": "E.1.b",
+      "title": "E.1.b - Unsolicited cancel of a part-filled order",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 4
+    },
+    {
+      "file": "general/e_1_c_alt01_e_1_c_unsolicited_replacement_of_a_part_filled_order.fix",
+      "section": "general",
+      "scenario_id": "E.1.c",
+      "title": "E.1.c - Unsolicited replacement of a part-filled order",
+      "variant": "alt01",
+      "variant_note": "If order is rejected by sell-side (broker, exchange, ECN)",
+      "message_count": 2
+    },
+    {
+      "file": "general/e_1_c_main_e_1_c_unsolicited_replacement_of_a_part_filled_order.fix",
+      "section": "general",
+      "scenario_id": "E.1.c",
+      "title": "E.1.c - Unsolicited replacement of a part-filled order",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 5
+    },
+    {
+      "file": "general/e_1_d_alt01_e_1_d_unsolicited_reduction_of_order_quantity_by_sell_side_e_g_for_us_ecns_to_communicate_nasdaq_selectnet_declines.fix",
+      "section": "general",
+      "scenario_id": "E.1.d",
+      "title": "E.1.d - Unsolicited reduction of order quantity by sell side ( e.g. for US ECNs to communicate Nasdaq SelectNet declines)",
+      "variant": "alt01",
+      "variant_note": "If order is rejected by sell-side (broker, exchange, ECN)",
+      "message_count": 2
+    },
+    {
+      "file": "general/e_1_d_main_e_1_d_unsolicited_reduction_of_order_quantity_by_sell_side_e_g_for_us_ecns_to_communicate_nasdaq_selectnet_declines.fix",
+      "section": "general",
+      "scenario_id": "E.1.d",
+      "title": "E.1.d - Unsolicited reduction of order quantity by sell side ( e.g. for US ECNs to communicate Nasdaq SelectNet declines)",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 4
+    },
+    {
+      "file": "general/e_1_e_alt01_e_1_e_unsolicited_cancel_of_a_cancel_if_not_best_order.fix",
+      "section": "general",
+      "scenario_id": "E.1.e",
+      "title": "E.1.e - Unsolicited cancel of a 'cancel if not best' order",
+      "variant": "alt01",
+      "variant_note": "If order is rejected by sell-side (broker, exchange, ECN) (e.g. if the order book is at 56.1-57.1 prior to this order)",
+      "message_count": 2
+    },
+    {
+      "file": "general/e_1_e_main_e_1_e_unsolicited_cancel_of_a_cancel_if_not_best_order.fix",
+      "section": "general",
+      "scenario_id": "E.1.e",
+      "title": "E.1.e - Unsolicited cancel of a 'cancel if not best' order",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 3
+    },
+    {
+      "file": "general/e_1_f_alt01_e_1_f_order_is_sent_to_exchange_held_waiting_for_activation_and_then_activated.fix",
+      "section": "general",
+      "scenario_id": "E.1.f",
+      "title": "E.1.f - Order is sent to exchange, held waiting for activation and then activated",
+      "variant": "alt01",
+      "variant_note": "If order is rejected by trader / exchange",
+      "message_count": 2
+    },
+    {
+      "file": "general/e_1_f_main_e_1_f_order_is_sent_to_exchange_held_waiting_for_activation_and_then_activated.fix",
+      "section": "general",
+      "scenario_id": "E.1.f",
+      "title": "E.1.f - Order is sent to exchange, held waiting for activation and then activated",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 5
+    },
+    {
+      "file": "general/f_1_a_main_f_1_a_order_rejected_due_to_duplicate_clordid.fix",
+      "section": "general",
+      "scenario_id": "F.1.a-",
+      "title": "F.1.a- Order rejected due to duplicate ClOrdID",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 5
+    },
+    {
+      "file": "general/f_1_b_main_f_1_b_possresend_and_duplicate_clordid.fix",
+      "section": "general",
+      "scenario_id": "F.1.b",
+      "title": "F.1.b - PossResend and duplicate ClOrdID",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 8
+    },
+    {
+      "file": "general/f_1_c_main_f_1_c_order_rejected_because_the_order_has_already_been_verbally_submitted.fix",
+      "section": "general",
+      "scenario_id": "F.1.c",
+      "title": "F.1.c - Order rejected because the order has already been verbally submitted",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 2
+    },
+    {
+      "file": "general/g_1_a_main_g_1_a_order_status_request_rejected_for_unknown_order.fix",
+      "section": "general",
+      "scenario_id": "G.1.a",
+      "title": "G.1.a - Order status request rejected for unknown order",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 5
+    },
+    {
+      "file": "general/g_1_b_alt01_g_1_b_transmitting_a_cms_style_nothing_done_in_response_to_a_status_request.fix",
+      "section": "general",
+      "scenario_id": "G.1.b",
+      "title": "G.1.b - Transmitting a CMS-style \"Nothing Done\" in response to a status request",
+      "variant": "alt01",
+      "variant_note": "If order is rejected by sell-side (broker, exchange, ECN)",
+      "message_count": 2
+    },
+    {
+      "file": "general/g_1_b_main_g_1_b_transmitting_a_cms_style_nothing_done_in_response_to_a_status_request.fix",
+      "section": "general",
+      "scenario_id": "G.1.b",
+      "title": "G.1.b - Transmitting a CMS-style \"Nothing Done\" in response to a status request",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 4
+    },
+    {
+      "file": "general/g_1_c_alt01_g_1_c_order_sent_immediately_followed_by_a_status_request_subsequent_status_requests_sent_during_life_of_order.fix",
+      "section": "general",
+      "scenario_id": "G.1.c",
+      "title": "G.1.c - Order sent, immediately followed by a status request. Subsequent status requests sent during life of order",
+      "variant": "alt01",
+      "variant_note": "If order is rejected",
+      "message_count": 4
+    },
+    {
+      "file": "general/g_1_c_main_g_1_c_order_sent_immediately_followed_by_a_status_request_subsequent_status_requests_sent_during_life_of_order.fix",
+      "section": "general",
+      "scenario_id": "G.1.c",
+      "title": "G.1.c - Order sent, immediately followed by a status request. Subsequent status requests sent during life of order",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 19
+    },
+    {
+      "file": "general/h_1_a_main_h_1_a_gtc_order_partially_filled_restated_renewed_and_partially_filled_the_following_day.fix",
+      "section": "general",
+      "scenario_id": "H.1.a",
+      "title": "H.1.a - GTC order partially filled, restated (renewed) and partially filled the following day",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 6
+    },
+    {
+      "file": "general/h_1_b_main_h_1_b_gtc_order_with_partial_fill_a_2_1_stock_split_then_a_partial_fill_and_fill_the_following_day.fix",
+      "section": "general",
+      "scenario_id": "H.1.b",
+      "title": "H.1.b - GTC order with partial fill, a 2:1 stock split then a partial fill and fill the following day",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 7
+    },
+    {
+      "file": "general/h_1_c_alt01_h_1_c_gtc_order_partially_filled_restated_renewed_and_canceled_the_following_day.fix",
+      "section": "general",
+      "scenario_id": "H.1.c",
+      "title": "H.1.c - GTC order partially filled, restated(renewed) and canceled the following day",
+      "variant": "alt01",
+      "variant_note": "If rejected by salesperson",
+      "message_count": 7
+    },
+    {
+      "file": "general/h_1_c_alt02_h_1_c_gtc_order_partially_filled_restated_renewed_and_canceled_the_following_day.fix",
+      "section": "general",
+      "scenario_id": "H.1.c",
+      "title": "H.1.c - GTC order partially filled, restated(renewed) and canceled the following day",
+      "variant": "alt02",
+      "variant_note": "If rejected by trader/exchange",
+      "message_count": 8
+    },
+    {
+      "file": "general/h_1_c_main_h_1_c_gtc_order_partially_filled_restated_renewed_and_canceled_the_following_day.fix",
+      "section": "general",
+      "scenario_id": "H.1.c",
+      "title": "H.1.c - GTC order partially filled, restated(renewed) and canceled the following day",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 8
+    },
+    {
+      "file": "general/h_1_d_alt01_h_1_d_gtc_order_partially_filled_restated_renewed_followed_by_replace_request_to_increase_quantity.fix",
+      "section": "general",
+      "scenario_id": "H.1.d",
+      "title": "H.1.d - GTC order partially filled, restated(renewed) followed by replace request to increase quantity",
+      "variant": "alt01",
+      "variant_note": "If rejected by salesperson",
+      "message_count": 7
+    },
+    {
+      "file": "general/h_1_d_alt02_h_1_d_gtc_order_partially_filled_restated_renewed_followed_by_replace_request_to_increase_quantity.fix",
+      "section": "general",
+      "scenario_id": "H.1.d",
+      "title": "H.1.d - GTC order partially filled, restated(renewed) followed by replace request to increase quantity",
+      "variant": "alt02",
+      "variant_note": "If rejected by trader/exchange",
+      "message_count": 9
+    },
+    {
+      "file": "general/h_1_d_main_h_1_d_gtc_order_partially_filled_restated_renewed_followed_by_replace_request_to_increase_quantity.fix",
+      "section": "general",
+      "scenario_id": "H.1.d",
+      "title": "H.1.d - GTC order partially filled, restated(renewed) followed by replace request to increase quantity",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 9
+    },
+    {
+      "file": "general/i_1_a_alt01_i_1_a_fill_or_kill_order_cannot_be_filled.fix",
+      "section": "general",
+      "scenario_id": "I.1.a",
+      "title": "I.1.a - Fill or Kill order cannot be filled",
+      "variant": "alt01",
+      "variant_note": "If order is rejected by sell-side (broker, exchange, ECN)",
+      "message_count": 2
+    },
+    {
+      "file": "general/i_1_a_main_i_1_a_fill_or_kill_order_cannot_be_filled.fix",
+      "section": "general",
+      "scenario_id": "I.1.a",
+      "title": "I.1.a - Fill or Kill order cannot be filled",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 3
+    },
+    {
+      "file": "general/i_1_b_alt01_i_1_b_immediate_or_cancel_order_that_cannot_be_immediately_hit.fix",
+      "section": "general",
+      "scenario_id": "I.1.b",
+      "title": "I.1.b - Immediate or Cancel order that cannot be immediately hit",
+      "variant": "alt01",
+      "variant_note": "If order is rejected by sell-side (broker, exchange, ECN)",
+      "message_count": 2
+    },
+    {
+      "file": "general/i_1_b_main_i_1_b_immediate_or_cancel_order_that_cannot_be_immediately_hit.fix",
+      "section": "general",
+      "scenario_id": "I.1.b",
+      "title": "I.1.b - Immediate or Cancel order that cannot be immediately hit",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 4
+    },
+    {
+      "file": "general/j_1_a_alt01_j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions.fix",
+      "section": "general",
+      "scenario_id": "J.1.a",
+      "title": "J.1.a - Filled order, followed by correction and cancellation of executions",
+      "variant": "alt01",
+      "variant_note": "If order is rejected by sell-side (broker, exchange, ECN)",
+      "message_count": 2
+    },
+    {
+      "file": "general/j_1_a_main_j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions.fix",
+      "section": "general",
+      "scenario_id": "J.1.a",
+      "title": "J.1.a - Filled order, followed by correction and cancellation of executions",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 12
+    },
+    {
+      "file": "general/j_1_b_main_j_1_b_a_canceled_order_followed_by_a_busted_execution_and_a_new_execution.fix",
+      "section": "general",
+      "scenario_id": "J.1.b",
+      "title": "J.1.b - A canceled order followed by a busted execution and a new execution",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 8
+    },
+    {
+      "file": "general/j_1_c_main_j_1_c_gtc_order_partially_filled_restated_renewed_and_partially_filled_the_following_day_with_corrections_of_quantity_on_both_executions.fix",
+      "section": "general",
+      "scenario_id": "J.1.c",
+      "title": "J.1.c - GTC order partially filled, restated (renewed) and partially filled the following day, with corrections of quantity on both executions",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 8
+    },
+    {
+      "file": "general/j_1_d_main_j_1_d_part_filled_order_done_for_day_followed_by_trade_correction_and_bust.fix",
+      "section": "general",
+      "scenario_id": "J.1.d",
+      "title": "J.1.d - Part-filled order Done for day followed by trade correction and bust",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 6
+    },
+    {
+      "file": "general/k_1_a_alt01_k_1_a_trading_halt_reinstate.fix",
+      "section": "general",
+      "scenario_id": "K.1.a",
+      "title": "K.1.a - Trading Halt - Reinstate",
+      "variant": "alt01",
+      "variant_note": "If order is rejected by sell-side (broker, exchange, ECN)",
+      "message_count": 2
+    },
+    {
+      "file": "general/k_1_a_main_k_1_a_trading_halt_reinstate.fix",
+      "section": "general",
+      "scenario_id": "K.1.a",
+      "title": "K.1.a - Trading Halt - Reinstate",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 3
+    },
+    {
+      "file": "general/k_1_b_alt01_k_1_b_trading_halt_cancel.fix",
+      "section": "general",
+      "scenario_id": "K.1.b",
+      "title": "K.1.b - Trading Halt - Cancel",
+      "variant": "alt01",
+      "variant_note": "If order is rejected by sell-side (broker, exchange, ECN)",
+      "message_count": 2
+    },
+    {
+      "file": "general/k_1_b_main_k_1_b_trading_halt_cancel.fix",
+      "section": "general",
+      "scenario_id": "K.1.b",
+      "title": "K.1.b - Trading Halt - Cancel",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 3
+    },
+    {
+      "file": "general/l_1_a_alt01_l_1_a_transmitting_a_guarantee_of_execution_prior_to_execution.fix",
+      "section": "general",
+      "scenario_id": "L.1.a-",
+      "title": "L.1.a- Transmitting a guarantee of execution prior to execution",
+      "variant": "alt01",
+      "variant_note": "If order is rejected by sell-side (broker, exchange, ECN)",
+      "message_count": 2
+    },
+    {
+      "file": "general/l_1_a_main_l_1_a_transmitting_a_guarantee_of_execution_prior_to_execution.fix",
+      "section": "general",
+      "scenario_id": "L.1.a-",
+      "title": "L.1.a- Transmitting a guarantee of execution prior to execution",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 4
+    },
+    {
+      "file": "general/l_1_b_alt01_l_1_b_use_of_cashorderqty.fix",
+      "section": "general",
+      "scenario_id": "L.1.b-",
+      "title": "L.1.b- Use of CashOrderQty",
+      "variant": "alt01",
+      "variant_note": "If order is rejected",
+      "message_count": 2
+    },
+    {
+      "file": "general/l_1_b_main_l_1_b_use_of_cashorderqty.fix",
+      "section": "general",
+      "scenario_id": "L.1.b-",
+      "title": "L.1.b- Use of CashOrderQty",
+      "variant": "main",
+      "variant_note": "primary path from the non-italic rows",
+      "message_count": 4
+    }
+  ]
+}
