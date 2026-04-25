@@ -264,8 +264,6 @@ Loaded dictionaries:
 ```
 <!-- regen-readme:end --option=--info -->
 
-![--info](docs/info_command.png)
-
 ## Querying the FIX dictionaries `--message`, `--component` and `--tag`
 
 Use these flags to explore the active FIX dictionary. `--verbose` adds detail / metadata, `--column` uses a compact table layout. `--header`/`--trailer` only apply to `--message` and `--component` (not `--tag`).
