@@ -3,7 +3,7 @@
 SHELL := /bin/bash
 CI_SCRIPT := ./ci/ci_helper.sh
 
-.PHONY: setup-environment prepare icons message-groups appendix-d-samples repeating-group-samples regen-readme build build-release build-windows scan coverage sonar release clean help
+.PHONY: setup-environment prepare icons message-groups appendix-d-samples repeating-group-samples regen-readme regen-example-readmes build build-release build-windows scan coverage sonar release clean help
 
 setup-environment:
 	@bash -lc 'source $(CI_SCRIPT) && cmd_setup_environment'
@@ -26,6 +26,9 @@ repeating-group-samples:
 
 regen-readme:
 	@python3 ./ci/regen_readme.py
+
+regen-example-readmes:
+	@python3 ./ci/regen_example_readmes.py
 
 build: prepare
 	@bash -lc 'source $(CI_SCRIPT) && ensure_build_metadata && cargo fmt --all && cargo build --workspace'
@@ -152,6 +155,7 @@ help:
 	@echo "  appendix-d-samples → regenerate the Appendix D sample FIX corpus from the official order-state matrices"
 	@echo "  repeating-group-samples → regenerate the checked-in repeating-group FIX examples"
 	@echo "  regen-readme       → regenerate README Build It and command-line option output examples"
+	@echo "  regen-example-readmes → regenerate example README pretty-printed FIX output"
 	@echo "  build              → fmt + cargo build (debug)"
 	@echo "  build-release      → fmt + cargo build --release"
 	@echo "  build-windows      → fmt + rustup cargo build --release --target x86_64-pc-windows-gnu"

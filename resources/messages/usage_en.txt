@@ -4,20 +4,20 @@ Command line option examples:
 
     Query FIX dictionary contents by FIX Message Name or MsgType:
 
-      fixdecoder [[--fix=44] [--xml=FILE --xml=FILE2 ...]] [--message[=NAME|MSGTYPE] [--verbose] [--column] [--header] [--trailer]
+      fixdecoder [[--fix=44] [--xml=FILE --xml=FILE2 ...]] [--message[=NAME|MSGTYPE] [--verbose] [--column] [--header] [--trailer]]
 
       $ fixdecoder --message=NewOrderSingle --verbose --column --header --trailer
       $ fixdecoder --message=D --verbose --column --header --trailer
-    
+
     Query FIX dictionary contents by FIX Tag number:
 
-      fixdecoder [[--fix=44] [--xml=FILE --xml=FILE2 ...]] [--tag[=TAG] [--verbose] [--column]
+      fixdecoder [[--fix=44] [--xml=FILE --xml=FILE2 ...]] [--tag[=TAG] [--verbose] [--column]]
 
       $ fixdecoder --tag=44 --verbose --column
-      
+
     Query FIX dictionary contents by FIX Component Name:
 
-      fixdecoder [[--fix=44] [--xml=FILE --xml=FILE2 ...]] [--component[=NAME] [--verbose] [--column]
+      fixdecoder [[--fix=44] [--xml=FILE --xml=FILE2 ...]] [--component[=NAME] [--verbose] [--column]]
 
       $ fixdecoder --component=Instrument --verbose --column
 
@@ -29,26 +29,32 @@ Command line option examples:
 
   Prettify FIX log files with optional validation and obfuscation. Bat-style
   viewing controls are available via --style, --plain, --number, --paging,
-  --pager, and --nowrap. If output is piped then colour is disabled by default
-  but can be forced on with --colour=yes or --color=always. Shell-style
-  default options may also be supplied through FIXDECODER_DEFAULT_ARGS:
+  --pager, --nowrap, and --nocounts. If output is piped then colour is disabled
+  by default but can be forced on with --colour=yes or --color=always.
+  Shell-style default options may also be supplied through FIXDECODER_DEFAULT_ARGS:
 
     fixdecoder [--xml=FILE --xml=FILE2 ...] [--validate]
                [--colour=yes|no|auto] [--style=STYLE] [--plain]
                [--number] [--paging=auto|never|always] [--pager=CMD]
-               [--nowrap] [--secret] [--summary] [--follow]
+               [--nowrap] [--nocounts] [--secret] [--summary] [--follow]
                [--fix=VER] [--delimiter=CHAR] [file1.log file2.log ...]
 
     Validate and Obfuscate a FIX logfile.
 
     $ fixdecoder --validate --secret logs/fix.log
 
-    Decode all the NewOrderSingle messages in a FIX logfile and output the fix messages using a custom delimiter
-    also force colour mode because this example pipes the output into less. Normally colour mode is turned off
-    when piping the output due to the output containing ANSI control chars which may mess up processing further
-    down the pipe chain.
+    Decode all the NewOrderSingle messages in a FIX logfile and output the fix
+    messages using a custom delimiter also force colour mode because this example
+    pipes the output into less. Normally colour mode is turned off when piping
+    the output due to the output containing ANSI control chars which may mess up
+    processing further down the pipe chain.
 
     $ grep '35=D' logs/fix.log | fixdecoder --colour=yes --delimiter='|' | less
+
+    Suppress the final message count summary when you only want decoded
+    messages:
+
+    $ fixdecoder --nocounts logs/fix.log
 
     Show bat-style file headers and line numbers, but disable paging for
     follow-mode output:
@@ -68,9 +74,10 @@ Command line option examples:
     $ export FIXDECODER_DEFAULT_ARGS='--style=full --paging=always --nowrap'
     $ fixdecoder logs/fix.log
 
-    Force the decoding of a FIX log to use the FIX 4.4 dictionary. Only uses the version of the FIX dictionary
-    specified in the FIX message header if the tag being processed is not defined in the override dictionary.
-    for example FIX 4.4 does not have the FIX 4.2 tag 20 (ExecTransType)
+    Force the decoding of a FIX log to use the FIX 4.4 dictionary. Only uses the
+    version of the FIX dictionary specified in the FIX message header if the tag
+    being processed is not defined in the override dictionary. For example
+    FIX 4.4 does not have the FIX 4.2 tag 20 (ExecTransType)
 
     $ fixdecoder --fix=44 trades.log
 
@@ -83,3 +90,8 @@ Command line option examples:
 
     $ fixdecoder --secret-files logs/fix.log
     $ fixdecoder --secret-files --secret-dir redacted logs/fix.log logs/fix2.log
+
+    Show the full help or version details:
+
+    $ fixdecoder --help
+    $ fixdecoder --version

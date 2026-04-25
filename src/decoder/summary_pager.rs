@@ -24,6 +24,7 @@ const DIVIDER_WIDTH: usize = 3;
 pub struct SummaryPagerContent {
     pub sections: Vec<SummaryPagerSection>,
     pub message_counts: Vec<SummaryPagerMessageCount>,
+    pub no_counts: bool,
 }
 
 struct SectionView {
@@ -215,7 +216,11 @@ impl PagerModel {
 
         let empty_overview_lines = render_overview_lines(0, 0);
         update_left_width_hint(&mut left_width_hint, &empty_overview_lines);
-        let fallback_message_count_lines = render_message_count_lines(&content.message_counts)?;
+        let fallback_message_count_lines = if content.no_counts {
+            Vec::new()
+        } else {
+            render_message_count_lines(&content.message_counts)?
+        };
         update_left_width_hint(&mut left_width_hint, &fallback_message_count_lines);
 
         for (index, section) in content.sections.into_iter().enumerate() {
@@ -235,7 +240,11 @@ impl PagerModel {
             let open_seen = total_seen.saturating_sub(terminal_seen);
             let overview_lines = render_overview_lines(total_seen, open_seen);
             update_left_width_hint(&mut left_width_hint, &overview_lines);
-            let message_count_lines = render_message_count_lines(&section.message_counts)?;
+            let message_count_lines = if content.no_counts {
+                Vec::new()
+            } else {
+                render_message_count_lines(&section.message_counts)?
+            };
             update_left_width_hint(&mut left_width_hint, &message_count_lines);
 
             sections.push(SectionView {
@@ -521,6 +530,7 @@ mod tests {
                 count("D", "New Order Single", 1, "app"),
                 count("8", "Execution Report", 2, "app"),
             ],
+            no_counts: false,
             sections: vec![
                 section(
                     "one",
@@ -555,6 +565,7 @@ mod tests {
                 count("D", "New Order Single", 1, "app"),
                 count("8", "Execution Report", 2, "app"),
             ],
+            no_counts: false,
             sections: vec![
                 section(
                     "first summary",

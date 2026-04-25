@@ -351,6 +351,7 @@ fn run() -> Result<i32> {
         summary_pager::run(summary_pager::SummaryPagerContent {
             sections: tracker.build_paged_sections()?,
             message_counts: tracker.paged_message_counts(),
+            no_counts: opts.no_counts,
         })?;
     }
 
@@ -408,6 +409,7 @@ fn validate_cli_options(opts: &CliOptions) -> Result<()> {
         (opts.validate, "--validate"),
         (opts.summary, "--summary"),
         (opts.follow, "--follow"),
+        (opts.no_counts, "--nocounts"),
     ] {
         if enabled {
             return Err(anyhow!("--secret-files cannot be combined with {flag}"));
@@ -821,6 +823,7 @@ fn build_context<'a>(
         follow: opts.follow,
         live_status_enabled: stdout_is_terminal && !pager_active,
         validation_enabled: opts.validate,
+        no_counts: opts.no_counts,
         message_counts: std::collections::HashMap::new(),
         fixt_session_defaults: std::collections::HashMap::new(),
         counts_dirty: false,
@@ -1087,6 +1090,7 @@ fn build_cli() -> Command {
                 "Write obfuscated copies of the input files and exit",
             ),
             ("validate", "Validate FIX messages during decoding"),
+            ("nocounts", "Disable the message count summary"),
         ],
     );
 
@@ -1238,6 +1242,7 @@ struct CliOptions {
     pager: Option<String>,
     nowrap: bool,
     summary: bool,
+    no_counts: bool,
     #[allow(dead_code)]
     follow: bool,
     files: Vec<String>,
@@ -1298,6 +1303,7 @@ impl CliOptions {
             pager: selected_value(matches, default_matches, "pager").cloned(),
             nowrap: merged_flag(matches, default_matches, "nowrap"),
             summary,
+            no_counts: merged_flag(matches, default_matches, "nocounts"),
             follow: merged_flag(matches, default_matches, "follow"),
             files,
             delimiter: parse_delimiter(selected_value(matches, default_matches, "delimiter"))?,
@@ -2076,6 +2082,7 @@ mod tests {
             pager: None,
             nowrap: false,
             summary: false,
+            no_counts: false,
             follow: false,
             files: Vec::new(),
             delimiter: '\u{0001}',

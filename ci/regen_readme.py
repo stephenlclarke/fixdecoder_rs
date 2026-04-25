@@ -12,6 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 README = ROOT / "README.md"
+USAGE = ROOT / "resources" / "messages" / "usage_en.txt"
 FIXDECODER = ROOT / "target" / "debug" / "fixdecoder"
 EXAMPLE_DIR = ROOT / "target" / "readme-examples"
 
@@ -22,6 +23,11 @@ OPTION_BLOCK_RE = re.compile(
 BUILD_BLOCK_RE = re.compile(
     r"<!-- regen-readme:start --section=build-examples -->\n.*?"
     r"<!-- regen-readme:end --section=build-examples -->\n*",
+    re.S,
+)
+USAGE_BLOCK_RE = re.compile(
+    r"<!-- regen-readme:start --section=usage -->\n.*?"
+    r"<!-- regen-readme:end --section=usage -->\n*",
     re.S,
 )
 HEADING_RE = re.compile(r"^### `(?P<option>--[A-Za-z0-9-]+)")
@@ -143,15 +149,15 @@ EXAMPLES: tuple[ReadmeExample, ...] = (
     ),
     ReadmeExample(
         option="--validate",
-        display_command="printf '<invalid FIX>' | fixdecoder --fix=44 --validate --colour=no",
-        args=("--fix=44", "--validate", "--colour=no"),
+        display_command="printf '<invalid FIX>' | fixdecoder --fix=44 --validate --nocounts --colour=no",
+        args=("--fix=44", "--validate", "--nocounts", "--colour=no"),
         stdin=INVALID_FIX,
         max_lines=18,
     ),
     ReadmeExample(
         option="--secret",
-        display_command="printf '<FIX log>' | fixdecoder --fix=44 --secret --delimiter='|' --colour=no",
-        args=("--fix=44", "--secret", "--delimiter=|", "--colour=no"),
+        display_command="printf '<FIX log>' | fixdecoder --fix=44 --secret --nocounts --delimiter='|' --colour=no",
+        args=("--fix=44", "--secret", "--nocounts", "--delimiter=|", "--colour=no"),
         stdin=HEARTBEAT_FIX,
         max_lines=20,
     ),
@@ -164,22 +170,29 @@ EXAMPLES: tuple[ReadmeExample, ...] = (
     ),
     ReadmeExample(
         option="--colour",
-        display_command="printf '<FIX log>' | fixdecoder --fix=44 --colour=no",
-        args=("--fix=44", "--colour=no"),
+        display_command="printf '<FIX log>' | fixdecoder --fix=44 --nocounts --colour=no",
+        args=("--fix=44", "--nocounts", "--colour=no"),
         stdin=HEARTBEAT_FIX,
         max_lines=18,
     ),
     ReadmeExample(
         option="--delimiter",
-        display_command="printf '<FIX log>' | fixdecoder --fix=44 --delimiter=' ' --colour=no",
-        args=("--fix=44", "--delimiter= ", "--colour=no"),
+        display_command="printf '<FIX log>' | fixdecoder --fix=44 --nocounts --delimiter=' ' --colour=no",
+        args=("--fix=44", "--nocounts", "--delimiter= ", "--colour=no"),
+        stdin=HEARTBEAT_FIX,
+        max_lines=18,
+    ),
+    ReadmeExample(
+        option="--nocounts",
+        display_command="printf '<FIX log>' | fixdecoder --fix=44 --nocounts --colour=no",
+        args=("--fix=44", "--nocounts", "--colour=no"),
         stdin=HEARTBEAT_FIX,
         max_lines=18,
     ),
     ReadmeExample(
         option="--summary",
-        display_command="printf '<order FIX log>' | fixdecoder --fix=44 --summary --paging=never --colour=no",
-        args=("--fix=44", "--summary", "--paging=never", "--colour=no"),
+        display_command="printf '<order FIX log>' | fixdecoder --fix=44 --summary --nocounts --paging=never --colour=no",
+        args=("--fix=44", "--summary", "--nocounts", "--paging=never", "--colour=no"),
         stdin=ORDER_FIX + EXEC_FIX,
         max_lines=28,
     ),
@@ -195,6 +208,7 @@ def main() -> int:
     examples = {example.option: render_example(example) for example in EXAMPLES}
     original = README.read_text()
     updated = update_build_examples(original)
+    updated = update_usage_section(updated)
     updated = update_readme(updated, examples)
     README.write_text(updated)
     print(
@@ -378,6 +392,23 @@ def format_build_examples(examples: list[BuildExample]) -> str:
     return "\n".join(sections)
 
 
+def format_usage_block() -> str:
+    usage = USAGE.read_text().rstrip()
+    return (
+        "<!-- regen-readme:start --section=usage -->\n"
+        "\n"
+        "## Full Usage Examples\n"
+        "\n"
+        "The text below is generated from `resources/messages/usage_en.txt`, the same usage text printed after `fixdecoder --help`.\n"
+        "\n"
+        "```text\n"
+        f"{usage}\n"
+        "```\n"
+        "\n"
+        "<!-- regen-readme:end --section=usage -->\n\n"
+    )
+
+
 def format_prompted_output(example: BuildExample) -> str:
     body = f"❯ {example.display_command}"
     if example.output:
@@ -407,6 +438,15 @@ def update_build_examples(markdown: str) -> str:
     pcap_heading = markdown.index("\n# PCAP to FIX filter", build_heading)
     first_example = markdown.index("```bash\n❯ bash --version", build_heading)
     return f"{markdown[:first_example]}{block}{markdown[pcap_heading + 1:]}"
+
+
+def update_usage_section(markdown: str) -> str:
+    block = format_usage_block()
+    if USAGE_BLOCK_RE.search(markdown):
+        return USAGE_BLOCK_RE.sub(block, markdown)
+
+    insertion = markdown.index("## Key options at a glance")
+    return f"{markdown[:insertion]}{block}{markdown[insertion:]}"
 
 
 def update_readme(markdown: str, examples: dict[str, str]) -> str:

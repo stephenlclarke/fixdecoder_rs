@@ -226,6 +226,60 @@ fn file_decode_prints_separator_before_message_type_summary() {
 }
 
 #[test]
+fn nocounts_suppresses_message_type_summary() {
+    let mut file = NamedTempFile::new().expect("temp file");
+    write!(file, "{}{}", fix_message("35=0"), fix_message("35=D")).expect("write temp");
+
+    let assert = cargo_bin_cmd!("fixdecoder")
+        .args(["--fix=44", "--style=plain", "--nocounts"])
+        .arg(file.path())
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+
+    assert!(
+        !stdout.contains("Message Counts:"),
+        "--nocounts should suppress the message count summary: {stdout}"
+    );
+    assert!(
+        stdout.contains("BeginString"),
+        "--nocounts should not suppress decoded messages: {stdout}"
+    );
+}
+
+#[test]
+fn summary_nocounts_suppresses_message_type_summary() {
+    let mut file = NamedTempFile::new().expect("temp file");
+    let msg = valid_fix_message(
+        "FIX.4.4",
+        &[
+            ("35", "8"),
+            ("37", "O1"),
+            ("11", "C1"),
+            ("150", "0"),
+            ("39", "0"),
+        ],
+    );
+    write!(file, "{msg}").expect("write temp");
+
+    let assert = cargo_bin_cmd!("fixdecoder")
+        .args(["--fix=44", "--summary", "--paging=never", "--nocounts"])
+        .arg(file.path())
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+
+    assert!(
+        stdout.contains("Order Summary"),
+        "--summary --nocounts should still render order summaries: {stdout}"
+    );
+    assert!(
+        !stdout.contains("Message Counts:"),
+        "--summary --nocounts should suppress the message count summary: {stdout}"
+    );
+}
+
+#[test]
 fn file_output_starts_with_the_file_name_even_without_header_style() {
     let mut file = NamedTempFile::new().expect("temp file");
     let msg = fix_message("35=0");

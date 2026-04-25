@@ -79,6 +79,7 @@ pub struct PrettifyContext<'a> {
     pub follow: bool,
     pub live_status_enabled: bool,
     pub validation_enabled: bool,
+    pub no_counts: bool,
     pub message_counts: HashMap<String, MsgTypeCount>,
     pub fixt_session_defaults: HashMap<FixtSessionKey, String>,
     pub counts_dirty: bool,
@@ -94,6 +95,7 @@ struct FileProcessorConfig {
     fix_override: Option<String>,
     validation_enabled: bool,
     live_status_enabled: bool,
+    no_counts: bool,
 }
 
 impl FileProcessorConfig {
@@ -106,6 +108,7 @@ impl FileProcessorConfig {
             fix_override: ctx.fix_override.map(str::to_string),
             validation_enabled: ctx.validation_enabled,
             live_status_enabled: ctx.live_status_enabled,
+            no_counts: ctx.no_counts,
         }
     }
 }
@@ -653,6 +656,7 @@ fn process_file_in_parallel(path: &str, config: &FileProcessorConfig) -> Process
             follow: false,
             live_status_enabled: config.live_status_enabled,
             validation_enabled: config.validation_enabled,
+            no_counts: config.no_counts,
             message_counts: HashMap::new(),
             fixt_session_defaults: HashMap::new(),
             counts_dirty: false,
@@ -695,6 +699,10 @@ fn merge_message_counts(
 }
 
 pub fn print_message_counts(ctx: &mut PrettifyContext) -> io::Result<()> {
+    if ctx.no_counts {
+        ctx.counts_dirty = false;
+        return Ok(());
+    }
     if ctx.message_counts.is_empty() || !ctx.counts_dirty {
         return Ok(());
     }
@@ -1240,6 +1248,9 @@ fn track_message(msg: &str, dict: &FixTagLookup, ctx: &mut PrettifyContext) {
 }
 
 fn record_msg_type(msg: &str, dict: &FixTagLookup, ctx: &mut PrettifyContext) {
+    if ctx.no_counts {
+        return;
+    }
     if let Some(mt) = extract_msg_type(msg) {
         let label = dict.enum_description(35, &mt).map(|s| s.to_string());
         let entry = ctx.message_counts.entry(mt.clone()).or_default();
@@ -1942,6 +1953,7 @@ mod tests {
             follow: false,
             live_status_enabled: true,
             validation_enabled: true,
+            no_counts: false,
             message_counts: HashMap::new(),
             fixt_session_defaults: HashMap::new(),
             counts_dirty: false,
@@ -2011,6 +2023,7 @@ mod tests {
             follow: false,
             live_status_enabled: true,
             validation_enabled: true,
+            no_counts: false,
             message_counts: HashMap::new(),
             fixt_session_defaults: HashMap::new(),
             counts_dirty: false,
@@ -2068,6 +2081,7 @@ mod tests {
             follow: false,
             live_status_enabled: true,
             validation_enabled: true,
+            no_counts: false,
             message_counts: HashMap::new(),
             fixt_session_defaults: HashMap::new(),
             counts_dirty: false,
@@ -2126,6 +2140,7 @@ mod tests {
                 follow: false,
                 live_status_enabled: true,
                 validation_enabled: false,
+                no_counts: false,
                 message_counts: HashMap::new(),
                 fixt_session_defaults: HashMap::new(),
                 counts_dirty: false,
@@ -2270,6 +2285,7 @@ mod tests {
             follow: false,
             live_status_enabled: true,
             validation_enabled: true,
+            no_counts: false,
             message_counts: HashMap::new(),
             fixt_session_defaults: HashMap::new(),
             counts_dirty: false,
@@ -2446,6 +2462,7 @@ mod tests {
             follow: false,
             live_status_enabled: true,
             validation_enabled: false,
+            no_counts: false,
             message_counts: HashMap::new(),
             fixt_session_defaults: HashMap::new(),
             counts_dirty: false,
@@ -2523,6 +2540,7 @@ mod tests {
             follow: false,
             live_status_enabled: true,
             validation_enabled: false,
+            no_counts: false,
             message_counts,
             fixt_session_defaults: HashMap::new(),
             counts_dirty: true,
@@ -2583,6 +2601,7 @@ mod tests {
             follow: false,
             live_status_enabled: true,
             validation_enabled: false,
+            no_counts: false,
             message_counts: HashMap::new(),
             fixt_session_defaults: HashMap::new(),
             counts_dirty: false,
