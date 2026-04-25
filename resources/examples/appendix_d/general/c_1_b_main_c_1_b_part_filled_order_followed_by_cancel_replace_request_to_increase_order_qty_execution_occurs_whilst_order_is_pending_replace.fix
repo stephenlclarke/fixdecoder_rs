@@ -1,0 +1,28 @@
+# GENERAL C.1.b main
+# C.1.b - Part-filled order, followed by cancel/replace request to increase order qty, execution occurs whilst order is pending replace
+# Variant note: primary path from the non-italic rows
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: New Order(X)
+8=FIX.4.49=26735=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-c_1_b_part_filled_order_followed_by_cancel_replace_request_to_increase_order_qty_execution_occurs_whilst_order_is_pending_replace-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=010=163
+
+# 2: Execution(X)
+8=FIX.4.49=54535=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-c_1_b_part_filled_order_followed_by_cancel_replace_request_to_increase_order_qty_execution_occurs_whilst_order_is_pending_replace11=CL-c_1_b_part_filled_order_followed_by_cancel_replace_request_to_increase_order_qty_execution_occurs_whilst_order_is_pending_replace-X17=EX-c_1_b_part_filled_order_followed_by_cancel_replace_request_to_increase_order_qty_execution_occurs_whilst_order_is_pending_replace-AUTO001150=039=055=IBM54=138=1000040=244=50.0032=0151=1000014=06=50.0010=056
+
+# 3: Execution for 1000
+8=FIX.4.49=55935=849=SELL156=BUY134=252=20240101-09:30:01.00037=ORD-c_1_b_part_filled_order_followed_by_cancel_replace_request_to_increase_order_qty_execution_occurs_whilst_order_is_pending_replace11=CL-c_1_b_part_filled_order_followed_by_cancel_replace_request_to_increase_order_qty_execution_occurs_whilst_order_is_pending_replace-X17=EX-c_1_b_part_filled_order_followed_by_cancel_replace_request_to_increase_order_qty_execution_occurs_whilst_order_is_pending_replace-AUTO002150=F39=155=IBM54=138=1000040=244=50.0032=100031=50.00151=900014=10006=50.0010=230
+
+# 4: Request increase in order quantity to 12000
+8=FIX.4.49=53735=G49=BUY156=SELL134=252=20240101-09:30:01.00037=ORD-c_1_b_part_filled_order_followed_by_cancel_replace_request_to_increase_order_qty_execution_occurs_whilst_order_is_pending_replace41=CL-c_1_b_part_filled_order_followed_by_cancel_replace_request_to_increase_order_qty_execution_occurs_whilst_order_is_pending_replace-X11=CL-c_1_b_part_filled_order_followed_by_cancel_replace_request_to_increase_order_qty_execution_occurs_whilst_order_is_pending_replace-Y55=IBM54=160=20240101-09:30:04.00038=1200040=244=50.0015=USD59=010=066
+
+# 5: 'Pending replace' order status takes precedence over 'partially filled' order status
+8=FIX.4.49=68535=849=SELL156=BUY134=352=20240101-09:30:02.00037=ORD-c_1_b_part_filled_order_followed_by_cancel_replace_request_to_increase_order_qty_execution_occurs_whilst_order_is_pending_replace11=CL-c_1_b_part_filled_order_followed_by_cancel_replace_request_to_increase_order_qty_execution_occurs_whilst_order_is_pending_replace-Y41=CL-c_1_b_part_filled_order_followed_by_cancel_replace_request_to_increase_order_qty_execution_occurs_whilst_order_is_pending_replace-X17=EX-c_1_b_part_filled_order_followed_by_cancel_replace_request_to_increase_order_qty_execution_occurs_whilst_order_is_pending_replace-AUTO003150=E39=E55=IBM54=138=1000040=244=50.0032=0151=900014=10006=50.0010=159
+
+# 6: Execution for 100 before cancel/replace request is dealt with
+8=FIX.4.49=55835=849=SELL156=BUY134=452=20240101-09:30:03.00037=ORD-c_1_b_part_filled_order_followed_by_cancel_replace_request_to_increase_order_qty_execution_occurs_whilst_order_is_pending_replace11=CL-c_1_b_part_filled_order_followed_by_cancel_replace_request_to_increase_order_qty_execution_occurs_whilst_order_is_pending_replace-X17=EX-c_1_b_part_filled_order_followed_by_cancel_replace_request_to_increase_order_qty_execution_occurs_whilst_order_is_pending_replace-AUTO004150=F39=E55=IBM54=138=1000040=244=50.0032=10031=50.00151=890014=11006=50.0010=216
+
+# 7: Confirm replace has been accepted
+8=FIX.4.49=68635=849=SELL156=BUY134=552=20240101-09:30:04.00037=ORD-c_1_b_part_filled_order_followed_by_cancel_replace_request_to_increase_order_qty_execution_occurs_whilst_order_is_pending_replace11=CL-c_1_b_part_filled_order_followed_by_cancel_replace_request_to_increase_order_qty_execution_occurs_whilst_order_is_pending_replace-Y41=CL-c_1_b_part_filled_order_followed_by_cancel_replace_request_to_increase_order_qty_execution_occurs_whilst_order_is_pending_replace-X17=EX-c_1_b_part_filled_order_followed_by_cancel_replace_request_to_increase_order_qty_execution_occurs_whilst_order_is_pending_replace-AUTO005150=539=155=IBM54=138=1200040=244=50.0032=0151=1090014=11006=50.0010=182
+
+# 8: Execution for 10900
+8=FIX.4.49=55835=849=SELL156=BUY134=652=20240101-09:30:05.00037=ORD-c_1_b_part_filled_order_followed_by_cancel_replace_request_to_increase_order_qty_execution_occurs_whilst_order_is_pending_replace11=CL-c_1_b_part_filled_order_followed_by_cancel_replace_request_to_increase_order_qty_execution_occurs_whilst_order_is_pending_replace-Y17=EX-c_1_b_part_filled_order_followed_by_cancel_replace_request_to_increase_order_qty_execution_occurs_whilst_order_is_pending_replace-AUTO006150=F39=255=IBM54=138=1200040=244=50.0032=1090031=50.00151=014=120006=50.0010=199

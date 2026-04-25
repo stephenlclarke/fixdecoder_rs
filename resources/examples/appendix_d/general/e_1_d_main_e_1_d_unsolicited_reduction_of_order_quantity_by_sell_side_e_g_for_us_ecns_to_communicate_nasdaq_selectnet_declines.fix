@@ -1,0 +1,16 @@
+# GENERAL E.1.d main
+# E.1.d - Unsolicited reduction of order quantity by sell side ( e.g. for US ECNs to communicate Nasdaq SelectNet declines)
+# Variant note: primary path from the non-italic rows
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: New Order(X)
+8=FIX.4.49=25335=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-e_1_d_unsolicited_reduction_of_order_quantity_by_sell_side_e_g_for_us_ecns_to_communicate_nasdaq_selectnet_declines-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=010=210
+
+# 2: Execution(X)
+8=FIX.4.49=50335=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-e_1_d_unsolicited_reduction_of_order_quantity_by_sell_side_e_g_for_us_ecns_to_communicate_nasdaq_selectnet_declines11=CL-e_1_d_unsolicited_reduction_of_order_quantity_by_sell_side_e_g_for_us_ecns_to_communicate_nasdaq_selectnet_declines-X17=EX-e_1_d_unsolicited_reduction_of_order_quantity_by_sell_side_e_g_for_us_ecns_to_communicate_nasdaq_selectnet_declines-AUTO001150=039=055=IBM54=138=1000040=244=50.0032=0151=1000014=06=50.0010=206
+
+# 3: ExecRestatementReason="Partial Decline of OrderQty"
+8=FIX.4.49=50735=849=SELL156=BUY134=252=20240101-09:30:01.00037=ORD-e_1_d_unsolicited_reduction_of_order_quantity_by_sell_side_e_g_for_us_ecns_to_communicate_nasdaq_selectnet_declines11=CL-e_1_d_unsolicited_reduction_of_order_quantity_by_sell_side_e_g_for_us_ecns_to_communicate_nasdaq_selectnet_declines-X17=EX-e_1_d_unsolicited_reduction_of_order_quantity_by_sell_side_e_g_for_us_ecns_to_communicate_nasdaq_selectnet_declines-AUTO002150=D39=0378=555=IBM54=138=900040=244=50.0032=0151=900014=06=50.0010=174
+
+# 4: Execution(X)
+8=FIX.4.49=51335=849=SELL156=BUY134=352=20240101-09:30:02.00037=ORD-e_1_d_unsolicited_reduction_of_order_quantity_by_sell_side_e_g_for_us_ecns_to_communicate_nasdaq_selectnet_declines11=CL-e_1_d_unsolicited_reduction_of_order_quantity_by_sell_side_e_g_for_us_ecns_to_communicate_nasdaq_selectnet_declines-X17=EX-e_1_d_unsolicited_reduction_of_order_quantity_by_sell_side_e_g_for_us_ecns_to_communicate_nasdaq_selectnet_declines-AUTO003150=F39=255=IBM54=138=900040=244=50.0032=900031=50.00151=014=90006=50.0010=203

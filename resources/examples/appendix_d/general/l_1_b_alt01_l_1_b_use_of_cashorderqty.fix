@@ -1,0 +1,10 @@
+# GENERAL L.1.b- alt01
+# L.1.b- Use of CashOrderQty
+# Variant note: If order is rejected
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: Currency=EUR. A buy order to invest 10,000 EUR.
+8=FIX.4.49=16435=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-l_1_b_use_of_cashorderqty-X21=155=IBM54=160=20240101-09:30:01.000152=1000040=244=20.0015=EUR59=010=250
+
+# 2: If order is rejected
+8=FIX.4.49=25435=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-l_1_b_use_of_cashorderqty11=CL-l_1_b_use_of_cashorderqty-X17=EX-l_1_b_use_of_cashorderqty-AUTO001150=839=855=IBM54=1152=1000040=244=20.0032=0151=014=06=20.0058=If order is rejected10=054

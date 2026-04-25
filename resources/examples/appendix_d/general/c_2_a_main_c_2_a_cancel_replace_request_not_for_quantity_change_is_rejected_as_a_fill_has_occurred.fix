@@ -1,0 +1,22 @@
+# GENERAL C.2.a main
+# C.2.a - Cancel/replace request (not for quantity change) is rejected as a fill has occurred
+# Variant note: primary path from the non-italic rows
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: New Order(X)
+8=FIX.4.49=22535=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-c_2_a_cancel_replace_request_not_for_quantity_change_is_rejected_as_a_fill_has_occurred-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=010=248
+
+# 2: Execution(X)
+8=FIX.4.49=41935=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-c_2_a_cancel_replace_request_not_for_quantity_change_is_rejected_as_a_fill_has_occurred11=CL-c_2_a_cancel_replace_request_not_for_quantity_change_is_rejected_as_a_fill_has_occurred-X17=EX-c_2_a_cancel_replace_request_not_for_quantity_change_is_rejected_as_a_fill_has_occurred-AUTO001150=039=055=IBM54=138=1000040=244=50.0032=0151=1000014=06=50.0010=073
+
+# 3: Execution for 1000
+8=FIX.4.49=43335=849=SELL156=BUY134=252=20240101-09:30:01.00037=ORD-c_2_a_cancel_replace_request_not_for_quantity_change_is_rejected_as_a_fill_has_occurred11=CL-c_2_a_cancel_replace_request_not_for_quantity_change_is_rejected_as_a_fill_has_occurred-X17=EX-c_2_a_cancel_replace_request_not_for_quantity_change_is_rejected_as_a_fill_has_occurred-AUTO002150=F39=155=IBM54=138=1000040=244=50.0032=100031=50.00151=900014=10006=50.0010=238
+
+# 4: Assume in this scenario that client does not wish to increase qty (e.g. client wants to amend limit price)
+8=FIX.4.49=41135=G49=BUY156=SELL134=252=20240101-09:30:01.00037=ORD-c_2_a_cancel_replace_request_not_for_quantity_change_is_rejected_as_a_fill_has_occurred41=CL-c_2_a_cancel_replace_request_not_for_quantity_change_is_rejected_as_a_fill_has_occurred-X11=CL-c_2_a_cancel_replace_request_not_for_quantity_change_is_rejected_as_a_fill_has_occurred-Y55=IBM54=160=20240101-09:30:04.00038=1000040=244=50.0015=USD59=010=072
+
+# 4: Execution for 9000 - the replace request message and this execution report pass each other on the connection
+8=FIX.4.49=43135=849=SELL156=BUY134=352=20240101-09:30:02.00037=ORD-c_2_a_cancel_replace_request_not_for_quantity_change_is_rejected_as_a_fill_has_occurred11=CL-c_2_a_cancel_replace_request_not_for_quantity_change_is_rejected_as_a_fill_has_occurred-X17=EX-c_2_a_cancel_replace_request_not_for_quantity_change_is_rejected_as_a_fill_has_occurred-AUTO003150=F39=255=IBM54=138=1000040=244=50.0032=900031=50.00151=014=100006=50.0010=143
+
+# 5: CxlRejectReason = 0 (too late to cancel)
+8=FIX.4.49=35635=949=SELL156=BUY134=452=20240101-09:30:03.00037=ORD-c_2_a_cancel_replace_request_not_for_quantity_change_is_rejected_as_a_fill_has_occurred11=CL-c_2_a_cancel_replace_request_not_for_quantity_change_is_rejected_as_a_fill_has_occurred-Y41=CL-c_2_a_cancel_replace_request_not_for_quantity_change_is_rejected_as_a_fill_has_occurred-X39=2434=2102=010=166

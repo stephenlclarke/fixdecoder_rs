@@ -1,0 +1,16 @@
+# GENERAL I.1.b main
+# I.1.b - Immediate or Cancel order that cannot be immediately hit
+# Variant note: primary path from the non-italic rows
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: Order is IOC
+8=FIX.4.49=20035=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-i_1_b_immediate_or_cancel_order_that_cannot_be_immediately_hit-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=310=172
+
+# 2: Execution(X)
+8=FIX.4.49=34435=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-i_1_b_immediate_or_cancel_order_that_cannot_be_immediately_hit11=CL-i_1_b_immediate_or_cancel_order_that_cannot_be_immediately_hit-X17=EX-i_1_b_immediate_or_cancel_order_that_cannot_be_immediately_hit-AUTO001150=039=055=IBM54=138=1000040=244=50.0032=0151=1000014=06=50.0010=110
+
+# 3: Execution for 1000
+8=FIX.4.49=35835=849=SELL156=BUY134=252=20240101-09:30:01.00037=ORD-i_1_b_immediate_or_cancel_order_that_cannot_be_immediately_hit11=CL-i_1_b_immediate_or_cancel_order_that_cannot_be_immediately_hit-X17=EX-i_1_b_immediate_or_cancel_order_that_cannot_be_immediately_hit-AUTO002150=F39=155=IBM54=138=1000040=244=50.0032=100031=50.00151=900014=10006=50.0010=028
+
+# 4: If order cannot be immediately hit
+8=FIX.4.49=34335=849=SELL156=BUY134=352=20240101-09:30:02.00037=ORD-i_1_b_immediate_or_cancel_order_that_cannot_be_immediately_hit11=CL-i_1_b_immediate_or_cancel_order_that_cannot_be_immediately_hit-X17=EX-i_1_b_immediate_or_cancel_order_that_cannot_be_immediately_hit-AUTO003150=439=455=IBM54=138=1000040=244=50.0032=0151=014=10006=50.0010=075

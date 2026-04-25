@@ -1,0 +1,31 @@
+# GENERAL D.2.d main
+# D.2.d - One cancel/replace request is issued followed immediately by another - broker rejects the second as order is pending replace
+# Variant note: primary path from the non-italic rows
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: New Order(X)
+8=FIX.4.49=26635=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-d_2_d_one_cancel_replace_request_is_issued_followed_immediately_by_another_broker_rejects_the_second_as_order_is_pending_replace-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=010=244
+
+# 2: Execution(X)
+8=FIX.4.49=54235=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-d_2_d_one_cancel_replace_request_is_issued_followed_immediately_by_another_broker_rejects_the_second_as_order_is_pending_replace11=CL-d_2_d_one_cancel_replace_request_is_issued_followed_immediately_by_another_broker_rejects_the_second_as_order_is_pending_replace-X17=EX-d_2_d_one_cancel_replace_request_is_issued_followed_immediately_by_another_broker_rejects_the_second_as_order_is_pending_replace-AUTO001150=039=055=IBM54=138=1000040=244=50.0032=0151=1000014=06=50.0010=043
+
+# 3: Execution for 1000
+8=FIX.4.49=55635=849=SELL156=BUY134=252=20240101-09:30:01.00037=ORD-d_2_d_one_cancel_replace_request_is_issued_followed_immediately_by_another_broker_rejects_the_second_as_order_is_pending_replace11=CL-d_2_d_one_cancel_replace_request_is_issued_followed_immediately_by_another_broker_rejects_the_second_as_order_is_pending_replace-X17=EX-d_2_d_one_cancel_replace_request_is_issued_followed_immediately_by_another_broker_rejects_the_second_as_order_is_pending_replace-AUTO002150=F39=155=IBM54=138=1000040=244=50.0032=100031=50.00151=900014=10006=50.0010=217
+
+# 4: Request decrease in order quantity to 8000, leaving 7000 open
+8=FIX.4.49=53335=G49=BUY156=SELL134=252=20240101-09:30:01.00037=ORD-d_2_d_one_cancel_replace_request_is_issued_followed_immediately_by_another_broker_rejects_the_second_as_order_is_pending_replace41=CL-d_2_d_one_cancel_replace_request_is_issued_followed_immediately_by_another_broker_rejects_the_second_as_order_is_pending_replace-X11=CL-d_2_d_one_cancel_replace_request_is_issued_followed_immediately_by_another_broker_rejects_the_second_as_order_is_pending_replace-Y55=IBM54=160=20240101-09:30:04.00038=800040=244=50.0015=USD59=010=009
+
+# 5: Request decrease in order quantity to 7000, leaving 6000 open Note OrigCOrdID set to last non rejected ClOrdID i.e. Y
+8=FIX.4.49=53335=G49=BUY156=SELL134=352=20240101-09:30:02.00037=ORD-d_2_d_one_cancel_replace_request_is_issued_followed_immediately_by_another_broker_rejects_the_second_as_order_is_pending_replace41=CL-d_2_d_one_cancel_replace_request_is_issued_followed_immediately_by_another_broker_rejects_the_second_as_order_is_pending_replace-Y11=CL-d_2_d_one_cancel_replace_request_is_issued_followed_immediately_by_another_broker_rejects_the_second_as_order_is_pending_replace-Z55=IBM54=160=20240101-09:30:05.00038=700040=244=50.0015=USD59=010=013
+
+# 6: Execution (Y,X)
+8=FIX.4.49=68135=849=SELL156=BUY134=352=20240101-09:30:02.00037=ORD-d_2_d_one_cancel_replace_request_is_issued_followed_immediately_by_another_broker_rejects_the_second_as_order_is_pending_replace11=CL-d_2_d_one_cancel_replace_request_is_issued_followed_immediately_by_another_broker_rejects_the_second_as_order_is_pending_replace-Y41=CL-d_2_d_one_cancel_replace_request_is_issued_followed_immediately_by_another_broker_rejects_the_second_as_order_is_pending_replace-X17=EX-d_2_d_one_cancel_replace_request_is_issued_followed_immediately_by_another_broker_rejects_the_second_as_order_is_pending_replace-AUTO003150=E39=E55=IBM54=138=1000040=244=50.0032=0151=900014=10006=50.0010=227
+
+# 7: Rejected because broker does not support processing of order cancel replace request whilst order is pending cancel. CxlRejReason = 'Order already in pending cancel or pending replace status' OrigClOrdID set to last accepted ClOrdID i.e. X
+8=FIX.4.49=47335=949=SELL156=BUY134=452=20240101-09:30:03.00037=ORD-d_2_d_one_cancel_replace_request_is_issued_followed_immediately_by_another_broker_rejects_the_second_as_order_is_pending_replace11=CL-d_2_d_one_cancel_replace_request_is_issued_followed_immediately_by_another_broker_rejects_the_second_as_order_is_pending_replace-Z41=CL-d_2_d_one_cancel_replace_request_is_issued_followed_immediately_by_another_broker_rejects_the_second_as_order_is_pending_replace-X39=E434=210=158
+
+# 8: Execution (Y,X)
+8=FIX.4.49=68035=849=SELL156=BUY134=552=20240101-09:30:04.00037=ORD-d_2_d_one_cancel_replace_request_is_issued_followed_immediately_by_another_broker_rejects_the_second_as_order_is_pending_replace11=CL-d_2_d_one_cancel_replace_request_is_issued_followed_immediately_by_another_broker_rejects_the_second_as_order_is_pending_replace-Y41=CL-d_2_d_one_cancel_replace_request_is_issued_followed_immediately_by_another_broker_rejects_the_second_as_order_is_pending_replace-X17=EX-d_2_d_one_cancel_replace_request_is_issued_followed_immediately_by_another_broker_rejects_the_second_as_order_is_pending_replace-AUTO004150=539=155=IBM54=138=800040=244=50.0032=0151=700014=10006=50.0010=152
+
+# 9: Execution for 2000
+8=FIX.4.49=55535=849=SELL156=BUY134=652=20240101-09:30:05.00037=ORD-d_2_d_one_cancel_replace_request_is_issued_followed_immediately_by_another_broker_rejects_the_second_as_order_is_pending_replace11=CL-d_2_d_one_cancel_replace_request_is_issued_followed_immediately_by_another_broker_rejects_the_second_as_order_is_pending_replace-Y17=EX-d_2_d_one_cancel_replace_request_is_issued_followed_immediately_by_another_broker_rejects_the_second_as_order_is_pending_replace-AUTO005150=F39=155=IBM54=138=800040=244=50.0032=200031=50.00151=500014=30006=50.0010=186

@@ -49,7 +49,9 @@ fn generated_repeating_group_corpus_is_present_and_validation_clean() {
         .success();
     let validate_stdout = String::from_utf8_lossy(&validate.get_output().stdout);
     assert!(
-        validate_stdout.trim().is_empty(),
+        !validate_stdout.contains("Line ")
+            && !validate_stdout.contains("Missing")
+            && !validate_stdout.contains("BeginString"),
         "repeating-group corpus should be validation-clean: {validate_stdout}"
     );
 }

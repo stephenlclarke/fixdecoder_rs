@@ -1,0 +1,7 @@
+# NewOrderSingle with Parties and nested PartySubIDs
+# Exercises NoPartyIDs(453) with two party instances and a nested NoPartySubIDs(802) group on the first party.
+# Source: https://www.fixtrading.org/standards/tagvalue-online/
+# Source: https://fiximate.fixtrading.org/legacy/en/FIX.4.4/body_49484950.html?find=PartyID
+# Source: https://fiximate.fixtrading.org/legacy/en/FIX.4.4/body_495268.html?find=Side
+
+8=FIX.4.49=19935=D49=BUY156=SELL134=152=20260424-10:00:00.00011=ORD-1001453=2448=DEUTDEFF447=B452=1802=1523=ACC-12345803=10448=CLIENT01447=D452=555=IBM54=160=20260424-10:00:00.00040=244=185.2510=080

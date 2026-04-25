@@ -815,6 +815,7 @@ fn build_context<'a>(
         display_delimiter: opts.delimiter,
         style: opts.style,
         wide_grid: opts.nowrap && pager_active,
+        source_separator_width: None,
         summary,
         fix_override,
         follow: opts.follow,

@@ -1,0 +1,25 @@
+# GENERAL C.1.a main
+# C.1.a - Zero-filled order, cancel/replace request issued to increase order qty
+# Variant note: primary path from the non-italic rows
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: New Order(X)
+8=FIX.4.49=21335=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-c_1_a_zero_filled_order_cancel_replace_request_issued_to_increase_order_qty-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=010=073
+
+# 2: Execution(X)
+8=FIX.4.49=38335=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-c_1_a_zero_filled_order_cancel_replace_request_issued_to_increase_order_qty11=CL-c_1_a_zero_filled_order_cancel_replace_request_issued_to_increase_order_qty-X17=EX-c_1_a_zero_filled_order_cancel_replace_request_issued_to_increase_order_qty-AUTO001150=039=055=IBM54=138=1000040=244=50.0032=0151=1000014=06=50.0010=069
+
+# 3: Request to increase order qty to 11000
+8=FIX.4.49=37535=G49=BUY156=SELL134=252=20240101-09:30:01.00037=ORD-c_1_a_zero_filled_order_cancel_replace_request_issued_to_increase_order_qty41=CL-c_1_a_zero_filled_order_cancel_replace_request_issued_to_increase_order_qty-X11=CL-c_1_a_zero_filled_order_cancel_replace_request_issued_to_increase_order_qty-Y55=IBM54=160=20240101-09:30:03.00038=1100040=244=50.0015=USD59=010=077
+
+# 4: Acknowledge the Replace request
+8=FIX.4.49=46735=849=SELL156=BUY134=252=20240101-09:30:01.00037=ORD-c_1_a_zero_filled_order_cancel_replace_request_issued_to_increase_order_qty11=CL-c_1_a_zero_filled_order_cancel_replace_request_issued_to_increase_order_qty-Y41=CL-c_1_a_zero_filled_order_cancel_replace_request_issued_to_increase_order_qty-X17=EX-c_1_a_zero_filled_order_cancel_replace_request_issued_to_increase_order_qty-AUTO002150=E39=E55=IBM54=138=1000040=244=50.0032=0151=1000014=06=50.0010=237
+
+# 5: Confirm order has been replaced
+8=FIX.4.49=46735=849=SELL156=BUY134=352=20240101-09:30:02.00037=ORD-c_1_a_zero_filled_order_cancel_replace_request_issued_to_increase_order_qty11=CL-c_1_a_zero_filled_order_cancel_replace_request_issued_to_increase_order_qty-Y41=CL-c_1_a_zero_filled_order_cancel_replace_request_issued_to_increase_order_qty-X17=EX-c_1_a_zero_filled_order_cancel_replace_request_issued_to_increase_order_qty-AUTO003150=539=055=IBM54=138=1100040=244=50.0032=0151=1100014=06=50.0010=205
+
+# 6: Execution for 1000. Use Y as the new ClOrdID.
+8=FIX.4.49=39835=849=SELL156=BUY134=452=20240101-09:30:03.00037=ORD-c_1_a_zero_filled_order_cancel_replace_request_issued_to_increase_order_qty11=CL-c_1_a_zero_filled_order_cancel_replace_request_issued_to_increase_order_qty-Y17=EX-c_1_a_zero_filled_order_cancel_replace_request_issued_to_increase_order_qty-AUTO004150=F39=155=IBM54=138=1100040=244=50.0032=100031=50.00151=1000014=10006=50.0010=036
+
+# 7: Execution for 2000
+8=FIX.4.49=39735=849=SELL156=BUY134=552=20240101-09:30:04.00037=ORD-c_1_a_zero_filled_order_cancel_replace_request_issued_to_increase_order_qty11=CL-c_1_a_zero_filled_order_cancel_replace_request_issued_to_increase_order_qty-Y17=EX-c_1_a_zero_filled_order_cancel_replace_request_issued_to_increase_order_qty-AUTO005150=F39=155=IBM54=138=1100040=244=50.0032=200031=50.00151=800014=30006=50.0010=000

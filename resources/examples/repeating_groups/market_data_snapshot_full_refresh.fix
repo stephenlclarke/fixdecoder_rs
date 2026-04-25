@@ -1,0 +1,7 @@
+# MarketDataSnapshotFullRefresh with MDFullGrp
+# Exercises NoMDEntries(268) with one bid and one offer entry.
+# Source: https://fiximate.fixtrading.org/legacy/en/FIX.4.4/body_514887.html?find=MDFullGrp
+# Source: https://fiximate.fixtrading.org/legacy/en/FIX.4.4/body_50485149.html?find=NoMDEntries
+# Source: https://www.fixtrading.org/standards/json-online/
+
+8=FIX.4.49=19035=W49=MDVENUE56=CLIENT134=352=20260424-10:00:02.000262=REQ-155=IBM268=2269=0270=185.25271=500272=20260424273=10:00:02.000269=1270=185.30271=400272=20260424273=10:00:02.00010=008

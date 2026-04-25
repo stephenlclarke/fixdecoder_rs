@@ -1,0 +1,19 @@
+# GENERAL G.1.a main
+# G.1.a - Order status request rejected for unknown order
+# Variant note: primary path from the non-italic rows
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: New Order(X)
+8=FIX.4.49=19135=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-g_1_a_order_status_request_rejected_for_unknown_order-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=010=141
+
+# 2: Execution(X)
+8=FIX.4.49=32335=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-g_1_a_order_status_request_rejected_for_unknown_order11=CL-g_1_a_order_status_request_rejected_for_unknown_order-X17=EX-g_1_a_order_status_request_rejected_for_unknown_order-AUTO001150=039=0103=555=IBM54=138=1000040=244=50.0032=0151=1000014=06=50.0010=003
+
+# 3: Execution for 1000
+8=FIX.4.49=33735=849=SELL156=BUY134=252=20240101-09:30:01.00037=ORD-g_1_a_order_status_request_rejected_for_unknown_order11=CL-g_1_a_order_status_request_rejected_for_unknown_order-X17=EX-g_1_a_order_status_request_rejected_for_unknown_order-AUTO002150=F39=1103=555=IBM54=138=1000040=244=50.0032=100031=50.00151=900014=10006=50.0010=177
+
+# 4: Status Request (Y)
+8=FIX.4.49=20135=H49=BUY156=SELL134=252=20240101-09:30:01.00037=NONE11=CL-g_1_a_order_status_request_rejected_for_unknown_order-Y790=STAT-g_1_a_order_status_request_rejected_for_unknown_order-Y-455=IBM54=110=101
+
+# 5: OrdRejReason = unknown order LastQty not required when ExecType=Order Status
+8=FIX.4.49=39035=849=SELL156=BUY134=352=20240101-09:30:02.00037=ORD-g_1_a_order_status_request_rejected_for_unknown_order11=CL-g_1_a_order_status_request_rejected_for_unknown_order-Y17=EX-g_1_a_order_status_request_rejected_for_unknown_order-AUTO003150=I39=8103=555=IBM54=138=040=244=50.00151=014=06=50.0058=OrdRejReason = unknown order LastQty not required when ExecType=Order Status10=214

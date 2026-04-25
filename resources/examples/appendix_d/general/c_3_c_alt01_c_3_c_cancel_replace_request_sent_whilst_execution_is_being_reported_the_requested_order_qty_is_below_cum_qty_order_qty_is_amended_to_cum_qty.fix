@@ -1,0 +1,10 @@
+# GENERAL C.3.c alt01
+# C.3.c - Cancel/replace request sent whilst execution is being reported - the requested order qty is below cum qty - order qty is amended to cum qty
+# Variant note: If order is rejected by sell-side (broker, exchange, ECN)
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: New Order(X)
+8=FIX.4.49=27935=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-c_3_c_cancel_replace_request_sent_whilst_execution_is_being_reported_the_requested_order_qty_is_below_cum_qty_order_qty_is_amended_to_cum_qty-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=010=234
+
+# 2: If order is rejected by sell-side (broker, exchange, ECN)
+8=FIX.4.49=63835=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-c_3_c_cancel_replace_request_sent_whilst_execution_is_being_reported_the_requested_order_qty_is_below_cum_qty_order_qty_is_amended_to_cum_qty11=CL-c_3_c_cancel_replace_request_sent_whilst_execution_is_being_reported_the_requested_order_qty_is_below_cum_qty_order_qty_is_amended_to_cum_qty-X17=EX-c_3_c_cancel_replace_request_sent_whilst_execution_is_being_reported_the_requested_order_qty_is_below_cum_qty_order_qty_is_amended_to_cum_qty-AUTO001150=839=855=IBM54=138=1000040=244=50.0032=0151=014=06=50.0058=If order is rejected by sell-side (broker, exchange, ECN)10=146

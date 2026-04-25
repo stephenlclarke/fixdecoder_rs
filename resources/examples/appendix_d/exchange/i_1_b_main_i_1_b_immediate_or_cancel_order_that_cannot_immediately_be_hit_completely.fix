@@ -1,0 +1,22 @@
+# EXCHANGE I.1.b main
+# I.1.b - Immediate or Cancel order that cannot immediately be hit completely
+# Variant note: primary path from the non-italic rows
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: Order is IOC
+8=FIX.4.49=21135=D49=BUY156=SELL134=152=20240103-09:30:00.00011=CL-i_1_b_immediate_or_cancel_order_that_cannot_immediately_be_hit_completely-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=310=077
+
+# 2: If messages are not bundled
+8=FIX.4.49=37735=849=SELL156=BUY134=152=20240103-09:30:00.00037=ORD-i_1_b_immediate_or_cancel_order_that_cannot_immediately_be_hit_completely11=CL-i_1_b_immediate_or_cancel_order_that_cannot_immediately_be_hit_completely-X17=EX-i_1_b_immediate_or_cancel_order_that_cannot_immediately_be_hit_completely-AUTO001150=039=055=IBM54=138=1000040=244=50.0032=0151=1000014=06=50.0010=077
+
+# 3: Execution for 1000
+8=FIX.4.49=39135=849=SELL156=BUY134=252=20240103-09:30:01.00037=ORD-i_1_b_immediate_or_cancel_order_that_cannot_immediately_be_hit_completely11=CL-i_1_b_immediate_or_cancel_order_that_cannot_immediately_be_hit_completely-X17=EX-i_1_b_immediate_or_cancel_order_that_cannot_immediately_be_hit_completely-AUTO002150=F39=155=IBM54=138=1000040=244=50.0032=100031=50.00151=900014=10006=50.0010=242
+
+# 4: If order cannot be immediately hit completely
+8=FIX.4.49=37635=849=SELL156=BUY134=352=20240103-09:30:02.00037=ORD-i_1_b_immediate_or_cancel_order_that_cannot_immediately_be_hit_completely11=CL-i_1_b_immediate_or_cancel_order_that_cannot_immediately_be_hit_completely-X17=EX-i_1_b_immediate_or_cancel_order_that_cannot_immediately_be_hit_completely-AUTO003150=439=455=IBM54=138=1000040=244=50.0032=0151=014=10006=50.0010=042
+
+# 5: Order is IOC
+8=FIX.4.49=21135=D49=BUY156=SELL134=252=20240103-09:30:01.00011=CL-i_1_b_immediate_or_cancel_order_that_cannot_immediately_be_hit_completely-Y21=155=IBM54=160=20240101-09:30:05.00038=1000040=244=50.0015=USD59=310=084
+
+# 6: If message bundling is being used and execution of 1000 occurs immediately upon hitting the book
+8=FIX.4.49=39135=849=SELL156=BUY134=452=20240103-09:30:03.00037=ORD-i_1_b_immediate_or_cancel_order_that_cannot_immediately_be_hit_completely11=CL-i_1_b_immediate_or_cancel_order_that_cannot_immediately_be_hit_completely-Y17=EX-i_1_b_immediate_or_cancel_order_that_cannot_immediately_be_hit_completely-AUTO004150=F39=455=IBM54=138=1000040=244=50.0032=100031=50.00151=900014=10006=50.0010=252

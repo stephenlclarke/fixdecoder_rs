@@ -1,0 +1,31 @@
+# GENERAL B.1.d main
+# B.1.d - Cancel request issued for an order that has not yet been acknowledged
+# Variant note: primary path from the non-italic rows
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: New Order(X)
+8=FIX.4.49=21335=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-b_1_d_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=010=031
+
+# 2: Order sender immediately wishes to cancel the order
+8=FIX.4.49=34935=F49=BUY156=SELL134=252=20240101-09:30:01.00041=CL-b_1_d_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged-X37=ORD-b_1_d_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged11=CL-b_1_d_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged-Y55=IBM54=160=20240101-09:30:02.00038=1000010=244
+
+# 3: OrigClOrd set to X even though X has not yet been 'accepted'.
+8=FIX.4.49=46735=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-b_1_d_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged11=CL-b_1_d_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged-Y41=CL-b_1_d_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged-X17=EX-b_1_d_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged-AUTO001150=639=655=IBM54=138=1000040=244=50.0032=0151=1000014=06=50.0010=036
+
+# 4: Order accepted before cancel request is processed.
+8=FIX.4.49=38335=849=SELL156=BUY134=252=20240101-09:30:01.00037=ORD-b_1_d_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged11=CL-b_1_d_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged-X17=EX-b_1_d_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged-AUTO002150=039=055=IBM54=138=1000040=244=50.0032=0151=1000014=06=50.0010=202
+
+# 5: Order canceled.
+8=FIX.4.49=46335=849=SELL156=BUY134=352=20240101-09:30:02.00037=ORD-b_1_d_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged11=CL-b_1_d_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged-Y41=CL-b_1_d_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged-X17=EX-b_1_d_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged-AUTO003150=439=455=IBM54=138=1000040=244=50.0032=0151=014=06=50.0010=097
+
+# 6: New Order(A)
+8=FIX.4.49=21235=D49=BUY156=SELL134=352=20240101-09:30:02.00011=CL-b_1_d_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged-A21=155=IBM54=160=20240101-09:30:06.00038=500040=244=50.0015=USD59=010=228
+
+# 7: Order sender immediately wishes to cancel the order
+8=FIX.4.49=34835=F49=BUY156=SELL134=452=20240101-09:30:03.00041=CL-b_1_d_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged-A37=ORD-b_1_d_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged11=CL-b_1_d_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged-B55=IBM54=160=20240101-09:30:07.00038=500010=162
+
+# 8: OrigClOrd set to A even though A has not yet been 'accepted'.
+8=FIX.4.49=46535=849=SELL156=BUY134=452=20240101-09:30:03.00037=ORD-b_1_d_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged11=CL-b_1_d_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged-B41=CL-b_1_d_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged-A17=EX-b_1_d_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged-AUTO004150=639=655=IBM54=138=500040=244=50.0032=0151=500014=06=50.0010=165
+
+# 9: Order canceled before it is accepted. Note OrigClOrdID set to A even though A has not yet been accepted
+8=FIX.4.49=46235=849=SELL156=BUY134=552=20240101-09:30:04.00037=ORD-b_1_d_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged11=CL-b_1_d_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged-B41=CL-b_1_d_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged-A17=EX-b_1_d_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged-AUTO005150=439=455=IBM54=138=500040=244=50.0032=0151=014=06=50.0010=012

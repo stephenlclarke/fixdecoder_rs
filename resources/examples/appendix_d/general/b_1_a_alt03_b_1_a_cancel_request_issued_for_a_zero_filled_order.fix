@@ -1,0 +1,19 @@
+# GENERAL B.1.a alt03
+# B.1.a - Cancel request issued for a zero-filled order
+# Variant note: If rejected by trader/exchange
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: New Order(X)
+8=FIX.4.49=18935=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-b_1_a_cancel_request_issued_for_a_zero_filled_order-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=010=092
+
+# 2: Execution(X)
+8=FIX.4.49=31135=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-b_1_a_cancel_request_issued_for_a_zero_filled_order11=CL-b_1_a_cancel_request_issued_for_a_zero_filled_order-X17=EX-b_1_a_cancel_request_issued_for_a_zero_filled_order-AUTO001150=039=055=IBM54=138=1000040=244=50.0032=0151=1000014=06=50.0010=081
+
+# 3: Cancel Request(Y,X)
+8=FIX.4.49=27735=F49=BUY156=SELL134=252=20240101-09:30:01.00041=CL-b_1_a_cancel_request_issued_for_a_zero_filled_order-X37=ORD-b_1_a_cancel_request_issued_for_a_zero_filled_order11=CL-b_1_a_cancel_request_issued_for_a_zero_filled_order-Y55=IBM54=160=20240101-09:30:03.00038=1000010=136
+
+# 4: Acknowledge the cancel request
+8=FIX.4.49=37135=849=SELL156=BUY134=252=20240101-09:30:01.00037=ORD-b_1_a_cancel_request_issued_for_a_zero_filled_order11=CL-b_1_a_cancel_request_issued_for_a_zero_filled_order-Y41=CL-b_1_a_cancel_request_issued_for_a_zero_filled_order-X17=EX-b_1_a_cancel_request_issued_for_a_zero_filled_order-AUTO002150=639=655=IBM54=138=1000040=244=50.0032=0151=1000014=06=50.0010=229
+
+# 5: If rejected by trader/exchange
+8=FIX.4.49=24235=949=SELL156=BUY134=352=20240101-09:30:02.00037=ORD-b_1_a_cancel_request_issued_for_a_zero_filled_order11=CL-b_1_a_cancel_request_issued_for_a_zero_filled_order-Y41=CL-b_1_a_cancel_request_issued_for_a_zero_filled_order-X39=0434=110=171

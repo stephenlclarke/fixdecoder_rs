@@ -1,0 +1,13 @@
+# GENERAL E.1.e main
+# E.1.e - Unsolicited cancel of a 'cancel if not best' order
+# Variant note: primary path from the non-italic rows
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: ExecInst = Z ( Cancel if Not Best)
+8=FIX.4.49=19435=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-e_1_e_unsolicited_cancel_of_a_cancel_if_not_best_order-X21=118=Z55=IBM54=160=20240101-09:30:01.00038=1000040=244=5615=USD59=010=214
+
+# 2: Order accepted as order book was 55.9-56.9 prior to this order. Order book is now 56.0-56.9
+8=FIX.4.49=32035=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-e_1_e_unsolicited_cancel_of_a_cancel_if_not_best_order11=CL-e_1_e_unsolicited_cancel_of_a_cancel_if_not_best_order-X17=EX-e_1_e_unsolicited_cancel_of_a_cancel_if_not_best_order-AUTO001150=039=0378=955=IBM54=138=1000040=244=5632=0151=1000014=06=5610=105
+
+# 3: Order book moves to 56.1-57.0. Order is no longer best bid/offer so is canceled with ExecRestatementReason ="Canceled, Not Best"
+8=FIX.4.49=31635=849=SELL156=BUY134=252=20240101-09:30:01.00037=ORD-e_1_e_unsolicited_cancel_of_a_cancel_if_not_best_order11=CL-e_1_e_unsolicited_cancel_of_a_cancel_if_not_best_order-X17=EX-e_1_e_unsolicited_cancel_of_a_cancel_if_not_best_order-AUTO002150=439=4378=955=IBM54=138=1000040=244=5632=0151=014=06=5610=184

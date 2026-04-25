@@ -1,0 +1,19 @@
+# GENERAL A.1.a main
+# A.1.a - Filled order
+# Variant note: primary path from the non-italic rows
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: New Order(X)
+8=FIX.4.49=15635=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-a_1_a_filled_order-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=010=183
+
+# 2: Execution(X)
+8=FIX.4.49=21235=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-a_1_a_filled_order11=CL-a_1_a_filled_order-X17=EX-a_1_a_filled_order-AUTO001150=039=055=IBM54=138=1000040=244=50.0032=0151=1000014=06=50.0010=116
+
+# 3: Execution of 2000
+8=FIX.4.49=22635=849=SELL156=BUY134=252=20240101-09:30:01.00037=ORD-a_1_a_filled_order11=CL-a_1_a_filled_order-X17=EX-a_1_a_filled_order-AUTO002150=F39=155=IBM54=138=1000040=244=50.0032=200031=50.00151=800014=20006=50.0010=035
+
+# 4: Execution of 1000
+8=FIX.4.49=22635=849=SELL156=BUY134=352=20240101-09:30:02.00037=ORD-a_1_a_filled_order11=CL-a_1_a_filled_order-X17=EX-a_1_a_filled_order-AUTO003150=F39=155=IBM54=138=1000040=244=50.0032=100031=50.00151=700014=30006=50.0010=037
+
+# 5: Execution of 7000
+8=FIX.4.49=22435=849=SELL156=BUY134=452=20240101-09:30:03.00037=ORD-a_1_a_filled_order11=CL-a_1_a_filled_order-X17=EX-a_1_a_filled_order-AUTO004150=F39=255=IBM54=138=1000040=244=50.0032=700031=50.00151=014=100006=50.0010=196

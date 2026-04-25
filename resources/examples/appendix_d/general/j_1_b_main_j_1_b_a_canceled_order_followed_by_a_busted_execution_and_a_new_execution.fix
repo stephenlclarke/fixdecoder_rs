@@ -1,0 +1,28 @@
+# GENERAL J.1.b main
+# J.1.b - A canceled order followed by a busted execution and a new execution
+# Variant note: primary path from the non-italic rows
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: New Order(X)
+8=FIX.4.49=21135=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-j_1_b_a_canceled_order_followed_by_a_busted_execution_and_a_new_execution-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=010=052
+
+# 2: Execution(X)
+8=FIX.4.49=37135=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-j_1_b_a_canceled_order_followed_by_a_busted_execution_and_a_new_execution11=CL-j_1_b_a_canceled_order_followed_by_a_busted_execution_and_a_new_execution-X17=EX-j_1_b_a_canceled_order_followed_by_a_busted_execution_and_a_new_execution-A150=039=055=IBM54=138=1000040=244=50.0032=0151=1000014=06=50.0010=128
+
+# 3: LastPx=50
+8=FIX.4.49=37935=849=SELL156=BUY134=252=20240101-09:30:01.00037=ORD-j_1_b_a_canceled_order_followed_by_a_busted_execution_and_a_new_execution11=CL-j_1_b_a_canceled_order_followed_by_a_busted_execution_and_a_new_execution-X17=EX-j_1_b_a_canceled_order_followed_by_a_busted_execution_and_a_new_execution-B150=F39=155=IBM54=138=1000040=244=50.0032=500031=50151=500014=50006=5010=025
+
+# 4: Cancel Request(Y,X)
+8=FIX.4.49=34335=F49=BUY156=SELL134=252=20240101-09:30:01.00041=CL-j_1_b_a_canceled_order_followed_by_a_busted_execution_and_a_new_execution-X37=ORD-j_1_b_a_canceled_order_followed_by_a_busted_execution_and_a_new_execution11=CL-j_1_b_a_canceled_order_followed_by_a_busted_execution_and_a_new_execution-Y55=IBM54=160=20240101-09:30:04.00038=1000010=053
+
+# 5: Execution (Y,X)
+8=FIX.4.49=45535=849=SELL156=BUY134=352=20240101-09:30:02.00037=ORD-j_1_b_a_canceled_order_followed_by_a_busted_execution_and_a_new_execution11=CL-j_1_b_a_canceled_order_followed_by_a_busted_execution_and_a_new_execution-Y41=CL-j_1_b_a_canceled_order_followed_by_a_busted_execution_and_a_new_execution-X17=EX-j_1_b_a_canceled_order_followed_by_a_busted_execution_and_a_new_execution-C150=639=655=IBM54=138=1000040=244=50.0032=0151=500014=50006=50.0010=099
+
+# 6: Execution (Y,X)
+8=FIX.4.49=45235=849=SELL156=BUY134=452=20240101-09:30:03.00037=ORD-j_1_b_a_canceled_order_followed_by_a_busted_execution_and_a_new_execution11=CL-j_1_b_a_canceled_order_followed_by_a_busted_execution_and_a_new_execution-Y41=CL-j_1_b_a_canceled_order_followed_by_a_busted_execution_and_a_new_execution-X17=EX-j_1_b_a_canceled_order_followed_by_a_busted_execution_and_a_new_execution-D150=439=455=IBM54=138=1000040=244=50.0032=0151=014=50006=50.0010=202
+
+# 7: Cancel of the execution. 'Canceled' order status takes precedence over 'New'
+8=FIX.4.49=37935=849=SELL156=BUY134=552=20240101-09:30:04.00037=ORD-j_1_b_a_canceled_order_followed_by_a_busted_execution_and_a_new_execution11=CL-j_1_b_a_canceled_order_followed_by_a_busted_execution_and_a_new_execution-X17=EX-j_1_b_a_canceled_order_followed_by_a_busted_execution_and_a_new_execution-E19=EX-REF-B150=H39=455=IBM54=138=1000040=244=50.0032=0151=014=06=50.0010=173
+
+# 8: Fill for 4000. LastPx=51
+8=FIX.4.49=37635=849=SELL156=BUY134=652=20240101-09:30:05.00037=ORD-j_1_b_a_canceled_order_followed_by_a_busted_execution_and_a_new_execution11=CL-j_1_b_a_canceled_order_followed_by_a_busted_execution_and_a_new_execution-X17=EX-j_1_b_a_canceled_order_followed_by_a_busted_execution_and_a_new_execution-F150=F39=455=IBM54=138=1000040=244=50.0032=400031=51151=014=40006=5110=144

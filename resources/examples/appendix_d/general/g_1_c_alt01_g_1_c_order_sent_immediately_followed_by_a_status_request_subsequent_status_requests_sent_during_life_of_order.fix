@@ -1,0 +1,16 @@
+# GENERAL G.1.c alt01
+# G.1.c - Order sent, immediately followed by a status request. Subsequent status requests sent during life of order
+# Variant note: If order is rejected
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: New Order(X)
+8=FIX.4.49=24835=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-g_1_c_order_sent_immediately_followed_by_a_status_request_subsequent_status_requests_sent_during_life_of_order-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=010=089
+
+# 2: Status Request (X)
+8=FIX.4.49=42535=H49=BUY156=SELL134=252=20240101-09:30:01.00037=ORD-g_1_c_order_sent_immediately_followed_by_a_status_request_subsequent_status_requests_sent_during_life_of_order11=CL-g_1_c_order_sent_immediately_followed_by_a_status_request_subsequent_status_requests_sent_during_life_of_order-X790=STAT-g_1_c_order_sent_immediately_followed_by_a_status_request_subsequent_status_requests_sent_during_life_of_order-X-255=IBM54=110=120
+
+# 3: Sent in response to status request. LastQty not required when ExecType=Order Status
+8=FIX.4.49=57035=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-g_1_c_order_sent_immediately_followed_by_a_status_request_subsequent_status_requests_sent_during_life_of_order11=CL-g_1_c_order_sent_immediately_followed_by_a_status_request_subsequent_status_requests_sent_during_life_of_order-X17=EX-g_1_c_order_sent_immediately_followed_by_a_status_request_subsequent_status_requests_sent_during_life_of_order-AUTO001150=I39=A55=IBM54=138=1000040=244=50.00151=1000014=06=50.0058=Sent in response to status request. LastQty not required when ExecType=Order Status10=117
+
+# 4: If order is rejected
+8=FIX.4.49=50835=849=SELL156=BUY134=252=20240101-09:30:01.00037=ORD-g_1_c_order_sent_immediately_followed_by_a_status_request_subsequent_status_requests_sent_during_life_of_order11=CL-g_1_c_order_sent_immediately_followed_by_a_status_request_subsequent_status_requests_sent_during_life_of_order-X17=EX-g_1_c_order_sent_immediately_followed_by_a_status_request_subsequent_status_requests_sent_during_life_of_order-AUTO002150=839=855=IBM54=138=1000040=244=50.0032=0151=014=06=50.0058=If order is rejected10=166

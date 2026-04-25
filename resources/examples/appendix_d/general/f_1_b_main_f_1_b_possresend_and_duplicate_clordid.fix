@@ -1,0 +1,28 @@
+# GENERAL F.1.b main
+# F.1.b - PossResend and duplicate ClOrdID
+# Variant note: primary path from the non-italic rows
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: New Order(X)
+8=FIX.4.49=17635=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-f_1_b_possresend_and_duplicate_clordid-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=010=006
+
+# 2: Execution(X)
+8=FIX.4.49=27835=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-f_1_b_possresend_and_duplicate_clordid11=CL-f_1_b_possresend_and_duplicate_clordid-X17=EX-f_1_b_possresend_and_duplicate_clordid-AUTO001150=039=0103=655=IBM54=138=1000040=244=50.0032=0151=1000014=06=50.0010=111
+
+# 3: PossResend=Y
+8=FIX.4.49=18135=D49=BUY156=SELL134=297=Y52=20240101-09:30:01.00011=CL-f_1_b_possresend_and_duplicate_clordid-X21=155=IBM54=160=20240101-09:30:03.00038=1000040=244=50.0015=USD59=010=013
+
+# 4: Because order X has already been received, confirm back the current state of the order. Last Qty not required when ExecType = Order Status
+8=FIX.4.49=39735=849=SELL156=BUY134=252=20240101-09:30:01.00037=ORD-f_1_b_possresend_and_duplicate_clordid11=CL-f_1_b_possresend_and_duplicate_clordid-X17=EX-f_1_b_possresend_and_duplicate_clordid-AUTO002150=I39=0103=655=IBM54=138=1000040=244=50.00151=1000014=06=50.0058=Because order X has already been received, confirm back the current state of the order. Last Qty not required when Ex...10=253
+
+# 5: PossResend=N or not set
+8=FIX.4.49=17635=D49=BUY156=SELL134=352=20240101-09:30:02.00011=CL-f_1_b_possresend_and_duplicate_clordid-X21=155=IBM54=160=20240101-09:30:05.00038=2000040=244=50.0015=USD59=010=015
+
+# 6: OrdRejReason = duplicate order. Note combining a reject of the second order for 20000 with a status on the first order for 10000.
+8=FIX.4.49=39735=849=SELL156=BUY134=352=20240101-09:30:02.00037=ORD-f_1_b_possresend_and_duplicate_clordid11=CL-f_1_b_possresend_and_duplicate_clordid-X17=EX-f_1_b_possresend_and_duplicate_clordid-AUTO003150=839=0103=655=IBM54=138=1000040=244=50.00151=1000014=06=50.0058=OrdRejReason = duplicate order. Note combining a reject of the second order for 20000 with a status on the first orde...10=019
+
+# 7: PossResend=Y
+8=FIX.4.49=18135=D49=BUY156=SELL134=497=Y52=20240101-09:30:03.00011=CL-f_1_b_possresend_and_duplicate_clordid-Y21=155=IBM54=160=20240101-09:30:07.00038=1500040=244=50.0015=USD59=010=027
+
+# 8: Because order Y has not been received before, confirm back as a new order.
+8=FIX.4.49=27835=849=SELL156=BUY134=452=20240101-09:30:03.00037=ORD-f_1_b_possresend_and_duplicate_clordid11=CL-f_1_b_possresend_and_duplicate_clordid-Y17=EX-f_1_b_possresend_and_duplicate_clordid-AUTO004150=039=0103=655=IBM54=138=1500040=244=50.0032=0151=1500014=06=50.0010=131

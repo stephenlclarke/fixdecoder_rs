@@ -1,0 +1,13 @@
+# GENERAL I.1.a main
+# I.1.a - Fill or Kill order cannot be filled
+# Variant note: primary path from the non-italic rows
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: Order is FOK
+8=FIX.4.49=17935=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-i_1_a_fill_or_kill_order_cannot_be_filled-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=410=033
+
+# 2: Execution(X)
+8=FIX.4.49=28135=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-i_1_a_fill_or_kill_order_cannot_be_filled11=CL-i_1_a_fill_or_kill_order_cannot_be_filled-X17=EX-i_1_a_fill_or_kill_order_cannot_be_filled-AUTO001150=039=055=IBM54=138=1000040=244=50.0032=0151=1000014=06=50.0010=157
+
+# 3: If order cannot be immediately filled
+8=FIX.4.49=27735=849=SELL156=BUY134=252=20240101-09:30:01.00037=ORD-i_1_a_fill_or_kill_order_cannot_be_filled11=CL-i_1_a_fill_or_kill_order_cannot_be_filled-X17=EX-i_1_a_fill_or_kill_order_cannot_be_filled-AUTO002150=439=455=IBM54=138=1000040=244=50.0032=0151=014=06=50.0010=236

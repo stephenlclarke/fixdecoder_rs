@@ -1,0 +1,10 @@
+# EXCHANGE I.1.b alt01
+# I.1.b - Immediate or Cancel order that cannot immediately be hit completely
+# Variant note: If order is rejected by sell-side (broker, exchange, ECN)
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: Order is IOC
+8=FIX.4.49=21135=D49=BUY156=SELL134=152=20240103-09:30:00.00011=CL-i_1_b_immediate_or_cancel_order_that_cannot_immediately_be_hit_completely-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=310=077
+
+# 2: If order is rejected by sell-side (broker, exchange, ECN)
+8=FIX.4.49=43435=849=SELL156=BUY134=152=20240103-09:30:00.00037=ORD-i_1_b_immediate_or_cancel_order_that_cannot_immediately_be_hit_completely11=CL-i_1_b_immediate_or_cancel_order_that_cannot_immediately_be_hit_completely-X17=EX-i_1_b_immediate_or_cancel_order_that_cannot_immediately_be_hit_completely-AUTO001150=839=855=IBM54=138=1000040=244=50.0032=0151=014=06=50.0058=If order is rejected by sell-side (broker, exchange, ECN)10=210

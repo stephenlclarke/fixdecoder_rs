@@ -1,0 +1,22 @@
+# GENERAL J.1.d main
+# J.1.d - Part-filled order Done for day followed by trade correction and bust
+# Variant note: primary path from the non-italic rows
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: New Order(X)
+8=FIX.4.49=21235=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-j_1_d_part_filled_order_done_for_day_followed_by_trade_correction_and_bust-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=010=196
+
+# 2: Execution(X)
+8=FIX.4.49=37435=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-j_1_d_part_filled_order_done_for_day_followed_by_trade_correction_and_bust11=CL-j_1_d_part_filled_order_done_for_day_followed_by_trade_correction_and_bust-X17=EX-j_1_d_part_filled_order_done_for_day_followed_by_trade_correction_and_bust-A150=039=055=IBM54=138=1000040=244=50.0032=0151=1000014=06=50.0010=048
+
+# 3: LastPx=50
+8=FIX.4.49=38235=849=SELL156=BUY134=252=20240101-09:30:01.00037=ORD-j_1_d_part_filled_order_done_for_day_followed_by_trade_correction_and_bust11=CL-j_1_d_part_filled_order_done_for_day_followed_by_trade_correction_and_bust-X17=EX-j_1_d_part_filled_order_done_for_day_followed_by_trade_correction_and_bust-B150=F39=155=IBM54=138=1000040=244=50.0032=500031=50151=500014=50006=5010=192
+
+# 4: Done for day message sent
+8=FIX.4.49=37335=849=SELL156=BUY134=352=20240101-09:30:02.00037=ORD-j_1_d_part_filled_order_done_for_day_followed_by_trade_correction_and_bust11=CL-j_1_d_part_filled_order_done_for_day_followed_by_trade_correction_and_bust-X17=EX-j_1_d_part_filled_order_done_for_day_followed_by_trade_correction_and_bust-C150=339=355=IBM54=138=1000040=244=50.0032=0151=014=50006=50.0010=015
+
+# 5: Correct quantity on execution to 4000. LastPx = 50
+8=FIX.4.49=39135=849=SELL156=BUY134=452=20240101-09:30:03.00037=ORD-j_1_d_part_filled_order_done_for_day_followed_by_trade_correction_and_bust11=CL-j_1_d_part_filled_order_done_for_day_followed_by_trade_correction_and_bust-X17=EX-j_1_d_part_filled_order_done_for_day_followed_by_trade_correction_and_bust-D19=EX-REF-B150=G39=355=IBM54=138=1000040=244=50.0032=400031=50151=014=40006=5010=240
+
+# 6: Done for Day OrdStatus takes precedence
+8=FIX.4.49=38235=849=SELL156=BUY134=552=20240101-09:30:04.00037=ORD-j_1_d_part_filled_order_done_for_day_followed_by_trade_correction_and_bust11=CL-j_1_d_part_filled_order_done_for_day_followed_by_trade_correction_and_bust-X17=EX-j_1_d_part_filled_order_done_for_day_followed_by_trade_correction_and_bust-E19=EX-REF-D150=H39=355=IBM54=138=1000040=244=50.0032=0151=014=06=50.0010=085

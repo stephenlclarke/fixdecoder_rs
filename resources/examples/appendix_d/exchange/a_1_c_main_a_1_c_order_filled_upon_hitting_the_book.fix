@@ -1,0 +1,10 @@
+# EXCHANGE A.1.c main
+# A.1.c - Order filled upon hitting the book
+# Variant note: primary path from the non-italic rows
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: New Order(X)
+8=FIX.4.49=17835=D49=BUY156=SELL134=152=20240103-09:30:00.00011=CL-a_1_c_order_filled_upon_hitting_the_book-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=010=224
+
+# 2: Immediate execution of 10000
+8=FIX.4.49=29135=849=SELL156=BUY134=152=20240103-09:30:00.00037=ORD-a_1_c_order_filled_upon_hitting_the_book11=CL-a_1_c_order_filled_upon_hitting_the_book-X17=EX-a_1_c_order_filled_upon_hitting_the_book-AUTO001150=F39=255=IBM54=138=1000040=244=50.0032=1000031=50.00151=014=100006=50.0010=084

@@ -1,0 +1,40 @@
+# GENERAL J.1.a main
+# J.1.a - Filled order, followed by correction and cancellation of executions
+# Variant note: primary path from the non-italic rows
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: New Order(X)
+8=FIX.4.49=21035=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=010=251
+
+# 2: Execution(X)
+8=FIX.4.49=36435=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions11=CL-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions-X17=EX-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions-B150=039=055=IBM54=138=1000040=244=50.0032=0151=1000014=06=010=024
+
+# 3: Execution for 1000 @ 100
+8=FIX.4.49=37835=849=SELL156=BUY134=252=20240101-09:30:01.00037=ORD-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions11=CL-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions-X17=EX-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions-C150=F39=155=IBM54=138=1000040=244=50.0032=100031=100151=900014=10006=10010=197
+
+# 4: Execution for 9000 @ 110
+8=FIX.4.49=37635=849=SELL156=BUY134=352=20240101-09:30:02.00037=ORD-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions11=CL-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions-X17=EX-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions-D150=F39=255=IBM54=138=1000040=244=50.0032=900031=110151=014=100006=10910=112
+
+# 5: Cancel execution for 1000.
+8=FIX.4.49=38535=849=SELL156=BUY134=452=20240101-09:30:03.00037=ORD-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions11=CL-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions-X17=EX-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions-E19=EX-REF-C150=H39=155=IBM54=138=1000040=244=50.0032=031=0151=100014=90006=11010=153
+
+# 6: Correct price on execution for 9000 to 100.
+8=FIX.4.49=39035=849=SELL156=BUY134=552=20240101-09:30:04.00037=ORD-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions11=CL-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions-X17=EX-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions-F19=EX-REF-D150=G39=155=IBM54=138=1000040=244=50.0032=900031=100151=100014=90006=10010=145
+
+# 7: Execution for 1000 @ 120
+8=FIX.4.49=37635=849=SELL156=BUY134=652=20240101-09:30:05.00037=ORD-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions11=CL-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions-X17=EX-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions-G150=F39=255=IBM54=138=1000040=244=50.0032=100031=120151=014=100006=10210=107
+
+# 8: Correct price on execution for 9000 to 120
+8=FIX.4.49=38835=849=SELL156=BUY134=752=20240101-09:30:06.00037=ORD-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions11=CL-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions-X17=EX-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions-H19=EX-REF-F150=G39=255=IBM54=138=1000040=244=50.0032=900031=120151=014=100006=12010=060
+
+# 9: Request to increase order qty
+8=FIX.4.49=36635=G49=BUY156=SELL134=252=20240101-09:30:01.00037=ORD-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions41=CL-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions-X11=CL-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions-Y55=IBM54=160=20240101-09:30:09.00038=1200040=244=50.0015=USD59=010=115
+
+# 10: Execution (Y,X)
+8=FIX.4.49=45235=849=SELL156=BUY134=852=20240101-09:30:07.00037=ORD-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions11=CL-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions-Y41=CL-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions-X17=EX-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions-I150=E39=E55=IBM54=138=1000040=244=50.0032=031=0151=014=100006=12010=183
+
+# 11: Execution (Y,X)
+8=FIX.4.49=45535=849=SELL156=BUY134=952=20240101-09:30:08.00037=ORD-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions11=CL-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions-Y41=CL-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions-X17=EX-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions-J150=539=155=IBM54=138=1200040=244=50.0032=031=0151=200014=100006=12010=045
+
+# 12: Correct execution of 9000 @ 120 to 9500 @ 120
+8=FIX.4.49=39235=849=SELL156=BUY134=1052=20240101-09:30:09.00037=ORD-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions11=CL-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions-Y17=EX-j_1_a_filled_order_followed_by_correction_and_cancellation_of_executions-K19=EX-REF-H150=G39=155=IBM54=138=1200040=244=50.0032=950031=120151=150014=105006=12010=011

@@ -15,13 +15,15 @@ use crate::decoder::tag_lookup::{
 };
 use crate::decoder::validator;
 use crate::fix;
+use chrono::{DateTime, Utc};
 use once_cell::sync::Lazy;
 use rayon::prelude::*;
 use regex::Regex;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
-use std::io::{self, BufRead, BufReader, Write};
+use std::io::{self, BufRead, BufReader, Seek, Write};
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -71,6 +73,7 @@ pub struct PrettifyContext<'a> {
     pub display_delimiter: char,
     pub style: OutputStyle,
     pub wide_grid: bool,
+    pub source_separator_width: Option<usize>,
     pub summary: &'a mut Option<OrderSummary>,
     pub fix_override: Option<&'a str>,
     pub follow: bool,
@@ -170,6 +173,7 @@ static FIX_REGEX: Lazy<Regex> =
 
 static INTERRUPTED: AtomicBool = AtomicBool::new(false);
 const FOLLOW_SLEEP: Duration = Duration::from_millis(250);
+const FILE_HEADER_RULE: &str = "----------------------------------------------";
 
 /// Shared interruption flag set by the SIGINT handler to allow graceful shutdowns.
 pub fn interrupt_flag() -> &'static AtomicBool {
@@ -643,6 +647,7 @@ fn process_file_in_parallel(path: &str, config: &FileProcessorConfig) -> Process
             display_delimiter: config.display_delimiter,
             style: config.style,
             wide_grid: config.wide_grid,
+            source_separator_width: None,
             summary: &mut summary,
             fix_override: config.fix_override.as_deref(),
             follow: false,
@@ -774,6 +779,14 @@ fn render_message_count_group(
     let header_prefix_width = row_indent.len();
     let count_col_start = header_prefix_width + 3 + 3 + max_label_width + 3;
     let header_pad = count_col_start.saturating_sub(header_prefix_width + "Message Type".len());
+    let separator_width = count_col_start + "Count:".len();
+    writeln!(
+        out,
+        "{row_indent}{}{}{}",
+        colours.title,
+        "-".repeat(separator_width.saturating_sub(header_prefix_width)),
+        colours.reset
+    )?;
     writeln!(
         out,
         "{row_indent}Message Type{:<pad$}Count:",
@@ -876,7 +889,7 @@ fn write_missing_line(
 /// Handle decoding from stdin (used when no file paths are provided).
 fn handle_stdin(ctx: &mut PrettifyContext) -> i32 {
     ctx.obfuscator.reset();
-    announce_source("(stdin)", ctx);
+    announce_stdin_source(ctx);
     let mut reader = BufReader::new(io::stdin().lock());
     match stream_until_complete(&mut reader, ctx) {
         Ok(_) => 0,
@@ -895,9 +908,8 @@ fn handle_stdin(ctx: &mut PrettifyContext) -> i32 {
 /// Handle decoding from a single file path, printing progress when validation is disabled.
 fn handle_file(path: &str, ctx: &mut PrettifyContext) -> io::Result<()> {
     ctx.obfuscator.reset();
-    announce_source(path, ctx);
 
-    let file = File::open(path).map_err(|err| {
+    let mut file = File::open(path).map_err(|err| {
         let colours = palette();
         let _ = writeln!(
             ctx.err_out,
@@ -906,8 +918,15 @@ fn handle_file(path: &str, ctx: &mut PrettifyContext) -> io::Result<()> {
         );
         err
     })?;
+    announce_file_source(path, &file, ctx);
+
+    let previous_width = ctx.source_separator_width;
+    ctx.source_separator_width = measure_file_source_separator_width(&mut file, ctx)?;
+
     let mut reader = BufReader::new(file);
-    stream_until_complete(&mut reader, ctx)
+    let result = stream_until_complete(&mut reader, ctx);
+    ctx.source_separator_width = previous_width;
+    result
 }
 
 /// Stream lines from a reader, emitting formatted FIX messages (and optionally validation output).
@@ -949,18 +968,60 @@ fn stream_until_complete<R: BufRead>(reader: &mut R, ctx: &mut PrettifyContext) 
     }
 }
 
-fn announce_source(label: &str, ctx: &mut PrettifyContext) {
+fn announce_stdin_source(ctx: &mut PrettifyContext) {
+    let colours = palette();
     if !ctx.style.show_header {
         return;
     }
-    let colours = palette();
-    let prefix = format!("-- {label} ");
+    let prefix = "-- (stdin) ";
     let fill = "-".repeat(terminal_width().saturating_sub(prefix.len()).max(4));
     let _ = writeln!(
         ctx.out,
         "{}{}{}{}\n",
         colours.file, prefix, fill, colours.reset
     );
+}
+
+fn announce_file_source(path: &str, file: &File, ctx: &mut PrettifyContext) {
+    let colours = palette();
+    let filename = Path::new(path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(path);
+    let last_modified = format_last_modified(file).unwrap_or_else(|| "unavailable".to_string());
+    let filename_line = format!("Filename: {filename}");
+    let modified_line = format!("Last Modified: {last_modified}");
+    let rule_width = FILE_HEADER_RULE
+        .len()
+        .max(visible_width(&filename_line))
+        .max(visible_width(&modified_line));
+    let rule = "-".repeat(rule_width);
+    let _ = writeln!(
+        ctx.out,
+        "{}{}{}\n{}{}{}\n{}{}{}\n{}{}{}\n",
+        colours.file,
+        rule,
+        colours.reset,
+        colours.file,
+        filename_line,
+        colours.reset,
+        colours.file,
+        modified_line,
+        colours.reset,
+        colours.file,
+        rule,
+        colours.reset
+    );
+}
+
+fn format_last_modified(file: &File) -> Option<String> {
+    let modified = file.metadata().ok()?.modified().ok()?;
+    let modified = DateTime::<Utc>::from(modified);
+    Some(format!(
+        "{}.{:03}Z",
+        modified.format("%d/%m/%y %H:%M:%S"),
+        modified.timestamp_subsec_millis()
+    ))
 }
 
 fn extract_tag_value<'a>(msg: &'a str, tag: &str) -> Option<&'a str> {
@@ -1066,16 +1127,28 @@ fn process_without_validation(
         .collect();
 
     if ctx.summary.is_none() {
-        let separator_width = messages.iter().zip(dictionaries.iter()).fold(
-            max_visible_line_width(&coloured_line),
-            |acc, (msg, dict)| acc.max(separator_width_for_message(msg, dict.as_ref(), false)),
-        );
-        write_source_line(ctx, line_number, &coloured_line)?;
-        write!(
-            ctx.out,
-            "{}",
-            render_separator(ctx.style, separator_width, ctx.wide_grid)
-        )?;
+        let source_separator_width = ctx.source_separator_width.unwrap_or_else(|| {
+            source_line_visible_width(line_number, &coloured_line, ctx.style.show_numbers)
+        });
+        let separator_width = if ctx.style.show_grid {
+            source_separator_width
+        } else {
+            messages
+                .iter()
+                .zip(dictionaries.iter())
+                .fold(source_separator_width, |acc, (msg, dict)| {
+                    acc.max(separator_width_for_message(msg, dict.as_ref(), false))
+                })
+        };
+        let separator = render_separator(ctx.style, separator_width, ctx.wide_grid);
+        if ctx.style.show_grid {
+            write!(ctx.out, "{separator}")?;
+            write_source_line(ctx, line_number, &coloured_line)?;
+            write!(ctx.out, "{separator}")?;
+        } else {
+            write_source_line(ctx, line_number, &coloured_line)?;
+            write!(ctx.out, "{separator}")?;
+        }
     }
 
     record_messages(&messages, &dictionaries, ctx);
@@ -1294,6 +1367,78 @@ fn max_visible_line_width(text: &str) -> usize {
     text.lines().map(visible_width).max().unwrap_or_default()
 }
 
+fn measure_file_source_separator_width(
+    file: &mut File,
+    ctx: &PrettifyContext<'_>,
+) -> io::Result<Option<usize>> {
+    if !ctx.wide_grid || !ctx.style.show_grid || ctx.follow || ctx.validation_enabled {
+        return Ok(None);
+    }
+
+    let mut line = String::new();
+    let mut line_number = 0usize;
+    let mut max_width = None;
+
+    {
+        let mut reader = BufReader::new(&mut *file);
+        loop {
+            line.clear();
+            let bytes = reader.read_line(&mut line)?;
+            if bytes == 0 {
+                break;
+            }
+            line_number += 1;
+            trim_line_endings(&mut line);
+
+            if find_fix_message_indices(&line).is_empty() {
+                continue;
+            }
+
+            let display_line = apply_display_delimiter(&line, ctx.display_delimiter);
+            let width =
+                source_line_visible_width(line_number, &display_line, ctx.style.show_numbers);
+            max_width = Some(max_width.map_or(width, |current: usize| current.max(width)));
+        }
+    }
+
+    file.rewind()?;
+    Ok(max_width)
+}
+
+fn source_line_visible_width(line_number: usize, content: &str, show_numbers: bool) -> usize {
+    let prefix_width = if show_numbers {
+        visible_width(&format!("{line_number:>6} | "))
+    } else {
+        0
+    };
+    prefix_width + visible_width_with_soh_markers(content)
+}
+
+fn visible_width_with_soh_markers(text: &str) -> usize {
+    let mut width = 0;
+    let mut in_esc = false;
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if in_esc {
+            if b == b'm' {
+                in_esc = false;
+            }
+            i += 1;
+            continue;
+        }
+        if b == 0x1b {
+            in_esc = true;
+            i += 1;
+            continue;
+        }
+        width += if b == 0x01 { 2 } else { 1 };
+        i += 1;
+    }
+    width
+}
+
 fn write_source_line(
     ctx: &mut PrettifyContext,
     line_number: usize,
@@ -1353,7 +1498,9 @@ fn process_fix_message(
         }
     }
 
-    write!(out, "{separator}")?;
+    if !style.show_grid {
+        write!(out, "{separator}")?;
+    }
     Ok(())
 }
 
@@ -1479,6 +1626,48 @@ mod tests {
         disable_output_colours();
         let dict = embedded_fix44_lookup();
         prettify_with_report(fixture_message(contents), &dict, None)
+    }
+
+    fn assert_file_banner(output: &str, expected_filename: &str) {
+        let mut lines = output.lines();
+        let top_rule = lines.next().expect("file header top rule");
+        assert!(
+            top_rule.chars().all(|ch| ch == '-'),
+            "top file header rule should contain only dashes: {output}"
+        );
+        assert!(
+            top_rule.len() >= FILE_HEADER_RULE.len(),
+            "top file header rule should be at least the documented width: {output}"
+        );
+        assert_eq!(
+            lines.next().expect("filename line"),
+            format!("Filename: {expected_filename}")
+        );
+
+        let modified_line = lines.next().expect("last modified line");
+        let timestamp = modified_line
+            .strip_prefix("Last Modified: ")
+            .expect("last modified label");
+        assert!(
+            timestamp.ends_with('Z'),
+            "last modified timestamp should be UTC/Zulu: {output}"
+        );
+        chrono::NaiveDateTime::parse_from_str(
+            &timestamp[..timestamp.len() - 1],
+            "%d/%m/%y %H:%M:%S%.3f",
+        )
+        .expect("last modified timestamp should match dd/mm/yy HH:MM:SS.mmmZ");
+
+        assert_eq!(
+            lines.next().expect("bottom rule"),
+            top_rule,
+            "file header rules should match: {output}"
+        );
+        assert_eq!(
+            lines.next().expect("blank spacer line"),
+            "",
+            "file header should be followed by a blank line: {output}"
+        );
     }
 
     #[test]
@@ -1747,6 +1936,7 @@ mod tests {
             display_delimiter: '|',
             style: OutputStyle::plain(),
             wide_grid: false,
+            source_separator_width: None,
             summary: &mut summary,
             fix_override: None,
             follow: false,
@@ -1815,6 +2005,7 @@ mod tests {
             display_delimiter: '|',
             style: OutputStyle::plain(),
             wide_grid: false,
+            source_separator_width: None,
             summary: &mut summary,
             fix_override: None,
             follow: false,
@@ -1871,6 +2062,7 @@ mod tests {
             display_delimiter: '|',
             style: OutputStyle::plain(),
             wide_grid: false,
+            source_separator_width: None,
             summary: &mut summary,
             fix_override: None,
             follow: false,
@@ -1885,9 +2077,15 @@ mod tests {
         let status = prettify_files(&[file.path().display().to_string()], &mut ctx);
         let output = String::from_utf8(out).unwrap();
         assert_eq!(status, 0);
+        let expected_filename = file
+            .path()
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap();
+        assert_file_banner(&output, expected_filename);
         assert!(
-            output.trim().is_empty(),
-            "clean validation runs should not emit decoded output or message counts"
+            !output.contains("BeginString") && !output.contains("Message Type"),
+            "clean validation runs should not emit decoded output or message counts: {output}"
         );
     }
 
@@ -1922,6 +2120,7 @@ mod tests {
                     show_grid: false,
                 },
                 wide_grid: false,
+                source_separator_width: None,
                 summary: &mut summary,
                 fix_override: None,
                 follow: false,
@@ -1947,11 +2146,27 @@ mod tests {
         );
 
         let output = String::from_utf8(out).unwrap();
+        let first_label = format!(
+            "Filename: {}",
+            first
+                .path()
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap()
+        );
         let first_pos = output
-            .find(&first.path().display().to_string())
+            .find(&first_label)
             .expect("first file header present");
+        let second_label = format!(
+            "Filename: {}",
+            second
+                .path()
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap()
+        );
         let second_pos = output
-            .find(&second.path().display().to_string())
+            .find(&second_label)
             .expect("second file header present");
         assert!(
             first_pos < second_pos,
@@ -2049,6 +2264,7 @@ mod tests {
             display_delimiter: '|',
             style: OutputStyle::plain(),
             wide_grid: false,
+            source_separator_width: None,
             summary: &mut summary,
             fix_override: None,
             follow: false,
@@ -2176,7 +2392,173 @@ mod tests {
     }
 
     #[test]
-    fn source_separator_matches_decoded_bottom_separator_in_wide_grid_mode() {
+    fn source_line_visible_width_counts_line_numbers_and_soh_markers() {
+        let colours = palette();
+        let content = format!(
+            "{}8=FIX.4.4\u{0001}9=005\u{0001}35=0\u{0001}10=000\u{0001}{}",
+            colours.message, colours.reset
+        );
+        let expected = visible_width("     1 | ")
+            + "8=FIX.4.4".len()
+            + 2
+            + "9=005".len()
+            + 2
+            + "35=0".len()
+            + 2
+            + "10=000".len()
+            + 2;
+        assert_eq!(source_line_visible_width(1, &content, true), expected);
+    }
+
+    #[test]
+    fn wide_grid_source_separators_match_widest_fix_line_in_file() {
+        let _lock = TEST_GUARD.lock().unwrap();
+        disable_output_colours();
+        interrupt_flag().store(false, Ordering::Relaxed);
+
+        let obfuscator = fix::create_obfuscator(false);
+        let short = format!("8=FIX.4.4{SOH}9=005{SOH}35=0{SOH}10=000{SOH}");
+        let long_text = "X".repeat(terminal_width());
+        let long = format!("8=FIX.4.4{SOH}9=120{SOH}35=D{SOH}58={long_text}{SOH}10=000{SOH}");
+        let noise = "not a FIX line but longer than the short message";
+
+        let mut file = NamedTempFile::new().expect("temp file");
+        std::io::Write::write_all(&mut file, format!("{short}\n{noise}\n{long}\n").as_bytes())
+            .expect("write temp file");
+
+        let mut out = Vec::new();
+        let mut err = io::sink();
+        let mut summary = None;
+        let mut ctx = PrettifyContext {
+            out: &mut out,
+            err_out: &mut err,
+            obfuscator: &obfuscator,
+            display_delimiter: '|',
+            style: OutputStyle {
+                show_numbers: false,
+                show_header: false,
+                show_grid: true,
+            },
+            wide_grid: true,
+            source_separator_width: None,
+            summary: &mut summary,
+            fix_override: None,
+            follow: false,
+            live_status_enabled: true,
+            validation_enabled: false,
+            message_counts: HashMap::new(),
+            fixt_session_defaults: HashMap::new(),
+            counts_dirty: false,
+            interrupted: interrupt_flag(),
+        };
+
+        let status = prettify_files(&[file.path().display().to_string()], &mut ctx);
+        assert_eq!(status, 0, "file should render successfully");
+
+        let output = String::from_utf8(out).unwrap();
+        let separators: Vec<&str> = output
+            .lines()
+            .filter(|line| line.starts_with('='))
+            .collect();
+        assert_eq!(
+            separators.len(),
+            4,
+            "expected two source-line separator pairs for two FIX lines: {output}"
+        );
+
+        let long_display = apply_display_delimiter(&long, '|');
+        let long_width = source_line_visible_width(3, &long_display, false);
+        let short_display = apply_display_delimiter(&short, '|');
+        let short_width = source_line_visible_width(1, &short_display, false);
+        assert!(
+            long_width > short_width,
+            "fixture should include a shorter and longer FIX line"
+        );
+
+        for separator in separators {
+            assert_eq!(
+                visible_width(separator),
+                long_width,
+                "all source-line separators should match the widest FIX line in the file: {output}"
+            );
+        }
+    }
+
+    #[test]
+    fn message_count_summary_includes_separator_before_header() {
+        let _lock = TEST_GUARD.lock().unwrap();
+        disable_output_colours();
+
+        let obfuscator = fix::create_obfuscator(false);
+        let mut out = Vec::new();
+        let mut err = io::sink();
+        let mut summary = None;
+        let mut message_counts = HashMap::new();
+        message_counts.insert(
+            "0".to_string(),
+            MsgTypeCount {
+                count: 12,
+                label: Some("HEARTBEAT".to_string()),
+                bucket: MessageBucket::SessionAdmin,
+            },
+        );
+        message_counts.insert(
+            "D".to_string(),
+            MsgTypeCount {
+                count: 3,
+                label: Some("NEW_ORDER_SINGLE".to_string()),
+                bucket: MessageBucket::BusinessOther,
+            },
+        );
+        let mut ctx = PrettifyContext {
+            out: &mut out,
+            err_out: &mut err,
+            obfuscator: &obfuscator,
+            display_delimiter: '|',
+            style: OutputStyle::plain(),
+            wide_grid: false,
+            source_separator_width: None,
+            summary: &mut summary,
+            fix_override: None,
+            follow: false,
+            live_status_enabled: true,
+            validation_enabled: false,
+            message_counts,
+            fixt_session_defaults: HashMap::new(),
+            counts_dirty: true,
+            interrupted: interrupt_flag(),
+        };
+
+        print_message_counts(&mut ctx).unwrap();
+
+        let output = String::from_utf8(out).unwrap();
+        let lines: Vec<&str> = output.lines().collect();
+        let header_index = lines
+            .iter()
+            .position(|line| line.trim_start().starts_with("Message Type"))
+            .expect("message-count summary header");
+        assert!(
+            header_index > 0,
+            "message-count summary header should not be the first line: {output}"
+        );
+        let separator = lines[header_index - 1].trim_start();
+        assert!(
+            separator.chars().all(|ch| ch == '-'),
+            "summary separator should contain only dashes: {output}"
+        );
+        let header = lines[header_index].trim_start();
+        assert!(
+            header.starts_with("Message Type"),
+            "message-count summary header should follow the separator: {output}"
+        );
+        assert!(
+            header.contains("Count:"),
+            "message-count summary header should include the count column: {output}"
+        );
+    }
+
+    #[test]
+    fn separators_bracket_source_line_in_wide_grid_mode() {
         let _lock = TEST_GUARD.lock().unwrap();
         disable_output_colours();
         let obfuscator = fix::create_obfuscator(false);
@@ -2195,6 +2577,7 @@ mod tests {
                 show_grid: true,
             },
             wide_grid: true,
+            source_separator_width: None,
             summary: &mut summary,
             fix_override: None,
             follow: false,
@@ -2209,6 +2592,7 @@ mod tests {
         stream_reader(&mut reader, &mut ctx).unwrap();
 
         let output = String::from_utf8(out).unwrap();
+        let lines: Vec<&str> = output.lines().collect();
         let separators: Vec<&str> = output
             .lines()
             .filter(|line| line.starts_with('='))
@@ -2216,12 +2600,30 @@ mod tests {
         assert_eq!(
             separators.len(),
             2,
-            "expected source-to-decoded separator and decoded bottom separator: {output}"
+            "expected exactly two separators around the source line: {output}"
+        );
+        assert!(
+            lines.first().is_some_and(|line| line.starts_with('=')),
+            "the top separator should be emitted before the source line: {output}"
+        );
+        assert!(
+            lines
+                .get(1)
+                .is_some_and(|line| line.contains("8=FIX.4.4|9=005|35=0|10=000|")),
+            "the source line should follow the top separator: {output}"
+        );
+        assert!(
+            lines.get(2).is_some_and(|line| line.starts_with('=')),
+            "the bottom separator should be emitted immediately after the source line: {output}"
+        );
+        assert!(
+            lines.get(3).is_some_and(|line| line.starts_with("     8")),
+            "decoded fields should follow the source-line separator pair: {output}"
         );
         assert_eq!(
             visible_width(separators[0]),
             visible_width(separators[1]),
-            "source separator should match decoded block width: {output}"
+            "source-line separators should match width: {output}"
         );
     }
 

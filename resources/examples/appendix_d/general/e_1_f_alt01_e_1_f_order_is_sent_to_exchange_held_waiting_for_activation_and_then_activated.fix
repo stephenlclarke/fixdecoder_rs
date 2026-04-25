@@ -1,0 +1,10 @@
+# GENERAL E.1.f alt01
+# E.1.f - Order is sent to exchange, held waiting for activation and then activated
+# Variant note: If order is rejected by trader / exchange
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: Entry of a stop (OrdType = 3), stop limit (OrdType = 4), At the Close (TimeInForce = 7), etc, order. E.g. an order that is held off the book waiting for activation subject to specified conditions.
+8=FIX.4.49=21635=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-e_1_f_order_is_sent_to_exchange_held_waiting_for_activation_and_then_activated-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=399=49.5015=USD59=010=119
+
+# 2: If order is rejected by trader / exchange
+8=FIX.4.49=43335=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-e_1_f_order_is_sent_to_exchange_held_waiting_for_activation_and_then_activated11=CL-e_1_f_order_is_sent_to_exchange_held_waiting_for_activation_and_then_activated-X17=EX-e_1_f_order_is_sent_to_exchange_held_waiting_for_activation_and_then_activated-AUTO001150=839=855=IBM54=138=1000040=399=49.5032=0151=014=06=50.0058=If order is rejected by trader / exchange10=040

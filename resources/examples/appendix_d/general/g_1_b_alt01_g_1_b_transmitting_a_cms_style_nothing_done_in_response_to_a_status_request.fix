@@ -1,0 +1,10 @@
+# GENERAL G.1.b alt01
+# G.1.b - Transmitting a CMS-style "Nothing Done" in response to a status request
+# Variant note: If order is rejected by sell-side (broker, exchange, ECN)
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: New Order(X)
+8=FIX.4.49=21335=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-g_1_b_transmitting_a_cms_style_nothing_done_in_response_to_a_status_request-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=010=175
+
+# 2: If order is rejected by sell-side (broker, exchange, ECN)
+8=FIX.4.49=44035=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-g_1_b_transmitting_a_cms_style_nothing_done_in_response_to_a_status_request11=CL-g_1_b_transmitting_a_cms_style_nothing_done_in_response_to_a_status_request-X17=EX-g_1_b_transmitting_a_cms_style_nothing_done_in_response_to_a_status_request-AUTO001150=839=855=IBM54=138=1000040=244=50.0032=0151=014=06=50.0058=If order is rejected by sell-side (broker, exchange, ECN)10=252

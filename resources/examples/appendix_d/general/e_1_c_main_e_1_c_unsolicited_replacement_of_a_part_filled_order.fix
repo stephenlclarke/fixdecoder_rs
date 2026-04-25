@@ -1,0 +1,23 @@
+# GENERAL E.1.c main
+# E.1.c - Unsolicited replacement of a part-filled order
+# Variant note: primary path from the non-italic rows
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: New Order(X)
+8=FIX.4.49=19035=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-e_1_c_unsolicited_replacement_of_a_part_filled_order-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=010=182
+
+# 2: Execution(X)
+8=FIX.4.49=31435=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-e_1_c_unsolicited_replacement_of_a_part_filled_order11=CL-e_1_c_unsolicited_replacement_of_a_part_filled_order-X17=EX-e_1_c_unsolicited_replacement_of_a_part_filled_order-AUTO001150=039=055=IBM54=138=1000040=244=50.0032=0151=1000014=06=50.0010=122
+
+# 3: Broker verbally agrees to increase order quantity to 11000
+
+# 4: Broker signifies that order has been replaced ExecRestatementReason = Verbal
+8=FIX.4.49=32035=849=SELL156=BUY134=252=20240101-09:30:01.00037=ORD-e_1_c_unsolicited_replacement_of_a_part_filled_order11=CL-e_1_c_unsolicited_replacement_of_a_part_filled_order-X17=EX-e_1_c_unsolicited_replacement_of_a_part_filled_order-AUTO002150=D39=0378=255=IBM54=138=1100040=244=50.0032=0151=1100014=06=50.0010=162
+
+# 5: Execution for 1000
+8=FIX.4.49=32935=849=SELL156=BUY134=352=20240101-09:30:02.00037=ORD-e_1_c_unsolicited_replacement_of_a_part_filled_order11=CL-e_1_c_unsolicited_replacement_of_a_part_filled_order-X17=EX-e_1_c_unsolicited_replacement_of_a_part_filled_order-AUTO003150=F39=155=IBM54=138=1100040=244=50.0032=100031=50.00151=1000014=10006=50.0010=085
+
+# 6: Broker verbally agrees to increase order quantity to 12000
+
+# 7: Broker signifies that order has been replaced ExecRestatementReason = Verbal change
+8=FIX.4.49=32335=849=SELL156=BUY134=452=20240101-09:30:03.00037=ORD-e_1_c_unsolicited_replacement_of_a_part_filled_order11=CL-e_1_c_unsolicited_replacement_of_a_part_filled_order-X17=EX-e_1_c_unsolicited_replacement_of_a_part_filled_order-AUTO004150=D39=1378=255=IBM54=138=1200040=244=50.0032=0151=1100014=10006=50.0010=062

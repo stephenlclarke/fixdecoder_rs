@@ -1,0 +1,19 @@
+# GENERAL F.1.a- main
+# F.1.a- Order rejected due to duplicate ClOrdID
+# Variant note: primary path from the non-italic rows
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: New Order(X)
+8=FIX.4.49=18335=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-f_1_a_order_rejected_due_to_duplicate_clordid-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=010=203
+
+# 2: Execution(X)
+8=FIX.4.49=29935=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-f_1_a_order_rejected_due_to_duplicate_clordid11=CL-f_1_a_order_rejected_due_to_duplicate_clordid-X17=EX-f_1_a_order_rejected_due_to_duplicate_clordid-AUTO001150=039=0103=655=IBM54=138=1000040=244=50.0032=0151=1000014=06=50.0010=199
+
+# 3: Execution for 1000
+8=FIX.4.49=31335=849=SELL156=BUY134=252=20240101-09:30:01.00037=ORD-f_1_a_order_rejected_due_to_duplicate_clordid11=CL-f_1_a_order_rejected_due_to_duplicate_clordid-X17=EX-f_1_a_order_rejected_due_to_duplicate_clordid-AUTO002150=F39=1103=655=IBM54=138=1000040=244=50.0032=100031=50.00151=900014=10006=50.0010=099
+
+# 4: Order submitted with the same order id.
+8=FIX.4.49=18335=D49=BUY156=SELL134=252=20240101-09:30:01.00011=CL-f_1_a_order_rejected_due_to_duplicate_clordid-X21=155=IBM54=160=20240101-09:30:04.00038=1500040=244=50.0015=USD59=010=213
+
+# 5: OrdRejReason = duplicate order. Note combining a reject of the order for 15000 with a status on the first order for 10000 (which is partially filled)
+8=FIX.4.49=42535=849=SELL156=BUY134=352=20240101-09:30:02.00037=ORD-f_1_a_order_rejected_due_to_duplicate_clordid11=CL-f_1_a_order_rejected_due_to_duplicate_clordid-X17=EX-f_1_a_order_rejected_due_to_duplicate_clordid-AUTO003150=839=1103=655=IBM54=138=1000040=244=50.0032=0151=900014=10006=50.0058=OrdRejReason = duplicate order. Note combining a reject of the order for 15000 with a status on the first order for 1...10=047

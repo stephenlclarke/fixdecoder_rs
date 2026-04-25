@@ -1,0 +1,28 @@
+# GENERAL B.1.b alt03
+# B.1.b - Cancel request issued for a part-filled order - executions occur whilst cancel request is active
+# Variant note: If request is rejected
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: New Order(X)
+8=FIX.4.49=23835=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-b_1_b_cancel_request_issued_for_a_part_filled_order_executions_occur_whilst_cancel_request_is_active-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=010=173
+
+# 2: Execution(X)
+8=FIX.4.49=45835=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-b_1_b_cancel_request_issued_for_a_part_filled_order_executions_occur_whilst_cancel_request_is_active11=CL-b_1_b_cancel_request_issued_for_a_part_filled_order_executions_occur_whilst_cancel_request_is_active-X17=EX-b_1_b_cancel_request_issued_for_a_part_filled_order_executions_occur_whilst_cancel_request_is_active-AUTO001150=039=055=IBM54=138=1000040=244=50.0032=0151=1000014=06=50.0010=095
+
+# 3: Execution for 2000
+8=FIX.4.49=47235=849=SELL156=BUY134=252=20240101-09:30:01.00037=ORD-b_1_b_cancel_request_issued_for_a_part_filled_order_executions_occur_whilst_cancel_request_is_active11=CL-b_1_b_cancel_request_issued_for_a_part_filled_order_executions_occur_whilst_cancel_request_is_active-X17=EX-b_1_b_cancel_request_issued_for_a_part_filled_order_executions_occur_whilst_cancel_request_is_active-AUTO002150=F39=155=IBM54=138=1000040=244=50.0032=200031=50.00151=800014=20006=50.0010=005
+
+# 4: Cancel Request(Y,X)
+8=FIX.4.49=42435=F49=BUY156=SELL134=252=20240101-09:30:01.00041=CL-b_1_b_cancel_request_issued_for_a_part_filled_order_executions_occur_whilst_cancel_request_is_active-X37=ORD-b_1_b_cancel_request_issued_for_a_part_filled_order_executions_occur_whilst_cancel_request_is_active11=CL-b_1_b_cancel_request_issued_for_a_part_filled_order_executions_occur_whilst_cancel_request_is_active-Y55=IBM54=160=20240101-09:30:04.00038=1000010=133
+
+# 4: Execution for 3000. This execution passes the cancel request on the connection
+8=FIX.4.49=47235=849=SELL156=BUY134=352=20240101-09:30:02.00037=ORD-b_1_b_cancel_request_issued_for_a_part_filled_order_executions_occur_whilst_cancel_request_is_active11=CL-b_1_b_cancel_request_issued_for_a_part_filled_order_executions_occur_whilst_cancel_request_is_active-X17=EX-b_1_b_cancel_request_issued_for_a_part_filled_order_executions_occur_whilst_cancel_request_is_active-AUTO003150=F39=155=IBM54=138=1000040=244=50.0032=300031=50.00151=500014=50006=50.0010=009
+
+# 5: 'Pending cancel' order status takes precedence over 'partially filled' order status
+8=FIX.4.49=56935=849=SELL156=BUY134=452=20240101-09:30:03.00037=ORD-b_1_b_cancel_request_issued_for_a_part_filled_order_executions_occur_whilst_cancel_request_is_active11=CL-b_1_b_cancel_request_issued_for_a_part_filled_order_executions_occur_whilst_cancel_request_is_active-Y41=CL-b_1_b_cancel_request_issued_for_a_part_filled_order_executions_occur_whilst_cancel_request_is_active-X17=EX-b_1_b_cancel_request_issued_for_a_part_filled_order_executions_occur_whilst_cancel_request_is_active-AUTO004150=639=655=IBM54=138=1000040=244=50.0032=0151=500014=50006=50.0010=181
+
+# 6: Execution for 1000 whilst order is pending cancel - 'pending cancel' order status takes precedence over 'partially filled' order status.
+8=FIX.4.49=47235=849=SELL156=BUY134=552=20240101-09:30:04.00037=ORD-b_1_b_cancel_request_issued_for_a_part_filled_order_executions_occur_whilst_cancel_request_is_active11=CL-b_1_b_cancel_request_issued_for_a_part_filled_order_executions_occur_whilst_cancel_request_is_active-X17=EX-b_1_b_cancel_request_issued_for_a_part_filled_order_executions_occur_whilst_cancel_request_is_active-AUTO005150=F39=655=IBM54=138=1000040=244=50.0032=100031=50.00151=400014=60006=50.0010=018
+
+# 7: If request is rejected
+8=FIX.4.49=38935=949=SELL156=BUY134=652=20240101-09:30:05.00037=ORD-b_1_b_cancel_request_issued_for_a_part_filled_order_executions_occur_whilst_cancel_request_is_active11=CL-b_1_b_cancel_request_issued_for_a_part_filled_order_executions_occur_whilst_cancel_request_is_active-Y41=CL-b_1_b_cancel_request_issued_for_a_part_filled_order_executions_occur_whilst_cancel_request_is_active-X39=1434=110=192

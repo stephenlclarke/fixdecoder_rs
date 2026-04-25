@@ -1,0 +1,18 @@
+# GENERAL E.1.b main
+# E.1.b - Unsolicited cancel of a part-filled order
+# Variant note: primary path from the non-italic rows
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: New Order(X)
+8=FIX.4.49=18535=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-e_1_b_unsolicited_cancel_of_a_part_filled_order-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=010=143
+
+# 2: Execution(X)
+8=FIX.4.49=29935=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-e_1_b_unsolicited_cancel_of_a_part_filled_order11=CL-e_1_b_unsolicited_cancel_of_a_part_filled_order-X17=EX-e_1_b_unsolicited_cancel_of_a_part_filled_order-AUTO001150=039=055=IBM54=138=1000040=244=50.0032=0151=1000014=06=50.0010=005
+
+# 3: Execution for 1000
+8=FIX.4.49=31335=849=SELL156=BUY134=252=20240101-09:30:01.00037=ORD-e_1_b_unsolicited_cancel_of_a_part_filled_order11=CL-e_1_b_unsolicited_cancel_of_a_part_filled_order-X17=EX-e_1_b_unsolicited_cancel_of_a_part_filled_order-AUTO002150=F39=155=IBM54=138=1000040=244=50.0032=100031=50.00151=900014=10006=50.0010=161
+
+# 4: Broker verbally agrees to cancel order
+
+# 5: Broker signifies that order has been canceled - ExecRestatementReason = Verbal change
+8=FIX.4.49=29835=849=SELL156=BUY134=352=20240101-09:30:02.00037=ORD-e_1_b_unsolicited_cancel_of_a_part_filled_order11=CL-e_1_b_unsolicited_cancel_of_a_part_filled_order-X17=EX-e_1_b_unsolicited_cancel_of_a_part_filled_order-AUTO003150=439=455=IBM54=138=1000040=244=50.0032=0151=014=10006=50.0010=226

@@ -1,0 +1,40 @@
+# GENERAL D.1.c main
+# D.1.c - One cancel/replace request is issued which is rejected after it is in pending replace - then another one is issued which is accepted
+# Variant note: primary path from the non-italic rows
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: New Order(X)
+8=FIX.4.49=27435=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=010=253
+
+# 2: Execution(X)
+8=FIX.4.49=56635=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted11=CL-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted-X17=EX-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted-AUTO001150=039=055=IBM54=138=1000040=244=50.0032=0151=1000014=06=50.0010=079
+
+# 3: Execution for 1000
+8=FIX.4.49=58035=849=SELL156=BUY134=252=20240101-09:30:01.00037=ORD-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted11=CL-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted-X17=EX-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted-AUTO002150=F39=155=IBM54=138=1000040=244=50.0032=100031=50.00151=900014=10006=50.0010=244
+
+# 4: Request decrease in order quantity to 8000, leaving 7000 open
+8=FIX.4.49=55735=G49=BUY156=SELL134=252=20240101-09:30:01.00037=ORD-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted41=CL-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted-X11=CL-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted-Y55=IBM54=160=20240101-09:30:04.00038=800040=244=50.0015=USD59=010=045
+
+# 5: Execution (Y,X)
+8=FIX.4.49=71335=849=SELL156=BUY134=352=20240101-09:30:02.00037=ORD-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted11=CL-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted-Y41=CL-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted-X17=EX-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted-AUTO003150=E39=E55=IBM54=138=1000040=244=50.0032=0151=900014=10006=50.0010=007
+
+# 6: Execution for 500. 'Pending replace' order status takes precedence over 'partially filled' order status
+8=FIX.4.49=57935=849=SELL156=BUY134=452=20240101-09:30:03.00037=ORD-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted11=CL-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted-X17=EX-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted-AUTO004150=F39=E55=IBM54=138=1000040=244=50.0032=50031=50.00151=850014=15006=50.0010=243
+
+# 7: Request is rejected (e.g. by trader/exchange)
+8=FIX.4.49=49735=949=SELL156=BUY134=552=20240101-09:30:04.00037=ORD-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted11=CL-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted-Y41=CL-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted-X39=1434=210=175
+
+# 8: Execution for 2000
+8=FIX.4.49=58035=849=SELL156=BUY134=652=20240101-09:30:05.00037=ORD-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted11=CL-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted-X17=EX-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted-AUTO005150=F39=155=IBM54=138=1000040=244=50.0032=200031=50.00151=650014=35006=50.0010=009
+
+# 9: Request decrease in order quantity to 6000, leaving 2500 open. Note that OrigClOrdID = X as this is the last non rejected ClOrdID
+8=FIX.4.49=55735=G49=BUY156=SELL134=352=20240101-09:30:02.00037=ORD-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted41=CL-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted-X11=CL-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted-Z55=IBM54=160=20240101-09:30:09.00038=600040=244=50.0015=USD59=010=051
+
+# 10: Execution (Z,X)
+8=FIX.4.49=71335=849=SELL156=BUY134=752=20240101-09:30:06.00037=ORD-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted11=CL-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted-Z41=CL-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted-X17=EX-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted-AUTO006150=E39=E55=IBM54=138=1000040=244=50.0032=0151=650014=35006=50.0010=028
+
+# 11: Execution (Z,X)
+8=FIX.4.49=71235=849=SELL156=BUY134=852=20240101-09:30:07.00037=ORD-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted11=CL-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted-Z41=CL-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted-X17=EX-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted-AUTO007150=539=155=IBM54=138=600040=244=50.0032=0151=250014=35006=50.0010=203
+
+# 12: Execution for 1500
+8=FIX.4.49=57935=849=SELL156=BUY134=952=20240101-09:30:08.00037=ORD-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted11=CL-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted-Z17=EX-d_1_c_one_cancel_replace_request_is_issued_which_is_rejected_after_it_is_in_pending_replace_then_another_one_is_issued_which_is_accepted-AUTO008150=F39=155=IBM54=138=600040=244=50.0032=150031=50.00151=100014=50006=50.0010=232

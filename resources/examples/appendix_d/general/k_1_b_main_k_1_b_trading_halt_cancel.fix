@@ -1,0 +1,15 @@
+# GENERAL K.1.b main
+# K.1.b - Trading Halt - Cancel
+# Variant note: primary path from the non-italic rows
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: ExecInst set to cancel on trading halt
+8=FIX.4.49=16335=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-k_1_b_trading_halt_cancel-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=010=139
+
+# 2: Execution(X)
+8=FIX.4.49=23935=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-k_1_b_trading_halt_cancel11=CL-k_1_b_trading_halt_cancel-X17=EX-k_1_b_trading_halt_cancel-AUTO001150=039=0378=655=IBM54=138=1000040=244=50.0032=0151=1000014=06=50.0010=021
+
+# 3: Trading halt established
+
+# 4: Order canceled due to trading halt. ExecRestatementReason = Canceled due to trading halt
+8=FIX.4.49=20735=849=SELL156=BUY134=252=20240101-09:30:01.00037=ORD-k_1_b_trading_halt_cancel-VOICE17=EX-k_1_b_trading_halt_cancel-AUTO002150=439=4378=655=IBM54=138=1000040=244=50.0032=0151=014=06=50.0010=075

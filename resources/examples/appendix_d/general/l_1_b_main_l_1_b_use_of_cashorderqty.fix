@@ -1,0 +1,16 @@
+# GENERAL L.1.b- main
+# L.1.b- Use of CashOrderQty
+# Variant note: primary path from the non-italic rows
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: Currency=EUR. A buy order to invest 10,000 EUR.
+8=FIX.4.49=16435=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-l_1_b_use_of_cashorderqty-X21=155=IBM54=160=20240101-09:30:01.000152=1000040=244=20.0015=EUR59=010=250
+
+# 2: Assuming product has a unit price of 20 EUR at time of order receipt
+8=FIX.4.49=23935=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-l_1_b_use_of_cashorderqty11=CL-l_1_b_use_of_cashorderqty-X17=EX-l_1_b_use_of_cashorderqty-AUTO001150=039=055=IBM54=138=500152=1000040=244=20.0032=0151=50014=06=20.0010=212
+
+# 3: Execution of 200 @20.1 (i.e. does not have to be at the 'conversion price' of 20)
+8=FIX.4.49=25035=849=SELL156=BUY134=252=20240101-09:30:01.00037=ORD-l_1_b_use_of_cashorderqty11=CL-l_1_b_use_of_cashorderqty-X17=EX-l_1_b_use_of_cashorderqty-AUTO002150=F39=155=IBM54=138=500152=1000040=244=20.0032=20031=20.1151=30014=2006=20.110=221
+
+# 4: Execution of 300 @20.2 (i.e. does not have to be at the 'conversion price' of 20)
+8=FIX.4.49=24835=849=SELL156=BUY134=352=20240101-09:30:02.00037=ORD-l_1_b_use_of_cashorderqty11=CL-l_1_b_use_of_cashorderqty-X17=EX-l_1_b_use_of_cashorderqty-AUTO003150=F39=255=IBM54=138=500152=1000040=244=20.0032=30031=20.2151=014=5006=20.210=139

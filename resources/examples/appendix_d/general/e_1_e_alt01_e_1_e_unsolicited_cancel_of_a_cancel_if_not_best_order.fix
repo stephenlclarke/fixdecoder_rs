@@ -1,0 +1,10 @@
+# GENERAL E.1.e alt01
+# E.1.e - Unsolicited cancel of a 'cancel if not best' order
+# Variant note: If order is rejected by sell-side (broker, exchange, ECN) (e.g. if the order book is at 56.1-57.1 prior to this order)
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: ExecInst = Z ( Cancel if Not Best)
+8=FIX.4.49=19435=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-e_1_e_unsolicited_cancel_of_a_cancel_if_not_best_order-X21=118=Z55=IBM54=160=20240101-09:30:01.00038=1000040=244=5615=USD59=010=214
+
+# 2: If order is rejected by sell-side (broker, exchange, ECN) (e.g. if the order book is at 56.1-57.1 prior to this order)
+8=FIX.4.49=43835=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-e_1_e_unsolicited_cancel_of_a_cancel_if_not_best_order11=CL-e_1_e_unsolicited_cancel_of_a_cancel_if_not_best_order-X17=EX-e_1_e_unsolicited_cancel_of_a_cancel_if_not_best_order-AUTO001150=839=8378=955=IBM54=138=1000040=244=5632=0151=014=06=5658=If order is rejected by sell-side (broker, exchange, ECN) (e.g. if the order book is at 56.1-57.1 prior to this order)10=036

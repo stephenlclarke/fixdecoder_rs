@@ -1,0 +1,6 @@
+# AllocationInstruction with OrdAllocGrp
+# Exercises NoOrders(73) with two source orders contributing to one allocation.
+# Source: https://fiximate.fixtrading.org/legacy/en/FIX.4.4/body_495774.html?find=AllocID
+# Source: https://fiximate.fixtrading.org/legacy/en/FIX.5.0SP2/body_50485154.html
+
+8=FIX.4.49=19535=J49=SELL156=BUYSIDE134=452=20260424-10:00:03.00070=ALLOC-200171=0626=5857=173=211=ORD-100137=BRK-900138=60011=ORD-100237=BRK-900238=40054=155=IBM53=10006=185.2775=2026042410=147

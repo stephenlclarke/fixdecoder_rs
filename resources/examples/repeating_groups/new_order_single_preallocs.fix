@@ -1,0 +1,6 @@
+# NewOrderSingle with PreAllocGrp
+# Exercises NoAllocs(78) inside PreAllocGrp with two allocation entries.
+# Source: https://fiximate.fixtrading.org/legacy/en/FIX.4.4/body_495268.html?find=Text
+# Source: https://fiximate.fixtrading.org/legacy/en/FIX.4.4/body_50485157.html?find=AllocQty
+
+8=FIX.4.49=18535=D49=BUY156=SELL134=252=20260424-10:00:01.00011=ORD-100270=BLOCK-ALLOC-178=279=ACC-ALPHA80=60079=ACC-BETA80=40055=IBM54=160=20260424-10:00:01.00038=100040=244=185.2510=069

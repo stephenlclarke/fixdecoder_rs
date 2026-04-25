@@ -1,0 +1,10 @@
+# GENERAL B.1.c alt01
+# B.1.c - Cancel request issued for an order that becomes filled before cancel request can be accepted
+# Variant note: If order is rejected
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: New Order(X)
+8=FIX.4.49=23635=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-b_1_c_cancel_request_issued_for_an_order_that_becomes_filled_before_cancel_request_can_be_accepted-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=010=065
+
+# 2: If order is rejected
+8=FIX.4.49=47235=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-b_1_c_cancel_request_issued_for_an_order_that_becomes_filled_before_cancel_request_can_be_accepted11=CL-b_1_c_cancel_request_issued_for_an_order_that_becomes_filled_before_cancel_request_can_be_accepted-X17=EX-b_1_c_cancel_request_issued_for_an_order_that_becomes_filled_before_cancel_request_can_be_accepted-AUTO001150=839=855=IBM54=138=1000040=244=50.0032=0151=014=06=50.0058=If order is rejected10=100

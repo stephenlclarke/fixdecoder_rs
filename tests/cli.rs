@@ -2,12 +2,15 @@
 // Integration smoke tests for the CLI to ensure end-to-end flows keep working.
 
 use assert_cmd::cargo::cargo_bin_cmd;
+use chrono::NaiveDateTime;
 use predicates::prelude::PredicateBooleanExt;
 use predicates::str::contains;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
 use tempfile::{NamedTempFile, tempdir};
+
+const FILE_HEADER_RULE: &str = "----------------------------------------------";
 
 fn fix_message(body: &str) -> String {
     let soh = '\u{0001}';
@@ -63,6 +66,45 @@ fn actual_checksum(msg: &str) -> i32 {
     let marker = "\u{0001}10=";
     let idx = msg.rfind(marker).expect("checksum marker");
     msg[..idx + 1].bytes().map(i32::from).sum::<i32>() % 256
+}
+
+fn assert_file_banner(stdout: &str, expected_filename: &str) {
+    let mut lines = stdout.lines();
+    let top_rule = lines.next().expect("file header top rule");
+    assert!(
+        top_rule.chars().all(|ch| ch == '-'),
+        "top file header rule should contain only dashes: {stdout}"
+    );
+    assert!(
+        top_rule.len() >= FILE_HEADER_RULE.len(),
+        "top file header rule should be at least the documented width: {stdout}"
+    );
+    assert_eq!(
+        lines.next().expect("filename line"),
+        format!("Filename: {expected_filename}")
+    );
+
+    let modified_line = lines.next().expect("last modified line");
+    let timestamp = modified_line
+        .strip_prefix("Last Modified: ")
+        .expect("last modified label");
+    assert!(
+        timestamp.ends_with('Z'),
+        "last modified timestamp should be UTC/Zulu: {stdout}"
+    );
+    NaiveDateTime::parse_from_str(&timestamp[..timestamp.len() - 1], "%d/%m/%y %H:%M:%S%.3f")
+        .expect("last modified timestamp should match dd/mm/yy HH:MM:SS.mmmZ");
+
+    assert_eq!(
+        lines.next().expect("bottom rule"),
+        top_rule,
+        "file header rules should match: {stdout}"
+    );
+    assert_eq!(
+        lines.next().expect("blank spacer line"),
+        "",
+        "file header should be followed by a blank line: {stdout}"
+    );
 }
 
 #[test]
@@ -154,6 +196,52 @@ fn secret_files_mode_writes_valid_obfuscated_sibling_file() {
 
     assert_eq!(declared_body_length, actual_body_length(fix));
     assert_eq!(declared_checksum, actual_checksum(fix));
+}
+
+#[test]
+fn file_decode_prints_separator_before_message_type_summary() {
+    let mut file = NamedTempFile::new().expect("temp file");
+    write!(file, "{}{}", fix_message("35=0"), fix_message("35=D")).expect("write temp");
+
+    let assert = cargo_bin_cmd!("fixdecoder")
+        .args(["--fix=44", "--style=plain"])
+        .arg(file.path())
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let lines: Vec<&str> = stdout.lines().collect();
+    let header_index = lines
+        .iter()
+        .position(|line| line.trim_start().starts_with("Message Type"))
+        .expect("message type summary header should be present");
+    assert!(
+        header_index > 0,
+        "summary header should not be first line: {stdout}"
+    );
+    let separator = lines[header_index - 1].trim_start();
+    assert!(
+        separator.chars().all(|ch| ch == '-'),
+        "message type summary should be preceded by a dashed separator: {stdout}"
+    );
+}
+
+#[test]
+fn file_output_starts_with_the_file_name_even_without_header_style() {
+    let mut file = NamedTempFile::new().expect("temp file");
+    let msg = fix_message("35=0");
+    write!(file, "{msg}").expect("write temp");
+    let expected = Path::new(file.path())
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap();
+
+    let assert = cargo_bin_cmd!("fixdecoder")
+        .args(["--fix=44", "--style=plain"])
+        .arg(file.path())
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert_file_banner(&stdout, expected);
 }
 
 #[test]
@@ -516,14 +604,18 @@ fn explicit_header_style_renders_source_banner_for_files() {
     let mut file = NamedTempFile::new().expect("temp file");
     let msg = fix_message("35=0");
     write!(file, "{msg}").expect("write temp");
-    let expected = format!("-- {} ", file.path().display());
+    let expected = Path::new(file.path())
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap();
 
-    cargo_bin_cmd!("fixdecoder")
+    let assert = cargo_bin_cmd!("fixdecoder")
         .args(["--fix=44", "--style=header"])
         .arg(file.path())
         .assert()
-        .success()
-        .stdout(contains(expected));
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert_file_banner(&stdout, expected);
 }
 
 #[test]

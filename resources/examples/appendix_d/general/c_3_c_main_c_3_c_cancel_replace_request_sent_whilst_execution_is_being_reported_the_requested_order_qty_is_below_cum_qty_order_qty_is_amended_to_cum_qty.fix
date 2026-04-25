@@ -1,0 +1,19 @@
+# GENERAL C.3.c main
+# C.3.c - Cancel/replace request sent whilst execution is being reported - the requested order qty is below cum qty - order qty is amended to cum qty
+# Variant note: primary path from the non-italic rows
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: New Order(X)
+8=FIX.4.49=27935=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-c_3_c_cancel_replace_request_sent_whilst_execution_is_being_reported_the_requested_order_qty_is_below_cum_qty_order_qty_is_amended_to_cum_qty-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=010=234
+
+# 2: Execution(X)
+8=FIX.4.49=58135=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-c_3_c_cancel_replace_request_sent_whilst_execution_is_being_reported_the_requested_order_qty_is_below_cum_qty_order_qty_is_amended_to_cum_qty11=CL-c_3_c_cancel_replace_request_sent_whilst_execution_is_being_reported_the_requested_order_qty_is_below_cum_qty_order_qty_is_amended_to_cum_qty-X17=EX-c_3_c_cancel_replace_request_sent_whilst_execution_is_being_reported_the_requested_order_qty_is_below_cum_qty_order_qty_is_amended_to_cum_qty-AUTO001150=039=055=IBM54=138=1000040=244=50.0032=0151=1000014=06=50.0010=004
+
+# 3: Client wishes to amend order qty to 7000
+8=FIX.4.49=57235=G49=BUY156=SELL134=252=20240101-09:30:01.00037=ORD-c_3_c_cancel_replace_request_sent_whilst_execution_is_being_reported_the_requested_order_qty_is_below_cum_qty_order_qty_is_amended_to_cum_qty41=CL-c_3_c_cancel_replace_request_sent_whilst_execution_is_being_reported_the_requested_order_qty_is_below_cum_qty_order_qty_is_amended_to_cum_qty-X11=CL-c_3_c_cancel_replace_request_sent_whilst_execution_is_being_reported_the_requested_order_qty_is_below_cum_qty_order_qty_is_amended_to_cum_qty-Y55=IBM54=160=20240101-09:30:03.00038=700040=244=50.0015=USD59=010=224
+
+# 3: Execution for 8000 - the replace message and this execution report pass each other on the connection
+8=FIX.4.49=59535=849=SELL156=BUY134=252=20240101-09:30:01.00037=ORD-c_3_c_cancel_replace_request_sent_whilst_execution_is_being_reported_the_requested_order_qty_is_below_cum_qty_order_qty_is_amended_to_cum_qty11=CL-c_3_c_cancel_replace_request_sent_whilst_execution_is_being_reported_the_requested_order_qty_is_below_cum_qty_order_qty_is_amended_to_cum_qty-X17=EX-c_3_c_cancel_replace_request_sent_whilst_execution_is_being_reported_the_requested_order_qty_is_below_cum_qty_order_qty_is_amended_to_cum_qty-AUTO002150=F39=155=IBM54=138=1000040=244=50.0032=800031=50.00151=200014=80006=50.0010=185
+
+# 4: The replace request is interpreted as requiring the balance of the order to be canceled - the 'filled' order status takes precedence over 'canceled'.
+8=FIX.4.49=72935=849=SELL156=BUY134=352=20240101-09:30:02.00037=ORD-c_3_c_cancel_replace_request_sent_whilst_execution_is_being_reported_the_requested_order_qty_is_below_cum_qty_order_qty_is_amended_to_cum_qty11=CL-c_3_c_cancel_replace_request_sent_whilst_execution_is_being_reported_the_requested_order_qty_is_below_cum_qty_order_qty_is_amended_to_cum_qty-Y41=CL-c_3_c_cancel_replace_request_sent_whilst_execution_is_being_reported_the_requested_order_qty_is_below_cum_qty_order_qty_is_amended_to_cum_qty-X17=EX-c_3_c_cancel_replace_request_sent_whilst_execution_is_being_reported_the_requested_order_qty_is_below_cum_qty_order_qty_is_amended_to_cum_qty-AUTO003150=539=255=IBM54=138=800040=244=50.0032=0151=014=80006=50.0010=208

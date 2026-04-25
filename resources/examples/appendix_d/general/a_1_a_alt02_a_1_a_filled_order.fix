@@ -1,0 +1,13 @@
+# GENERAL A.1.a alt02
+# A.1.a - Filled order
+# Variant note: If order is rejected by trader/exchange
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: New Order(X)
+8=FIX.4.49=15635=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-a_1_a_filled_order-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=010=183
+
+# 2: Execution(X)
+8=FIX.4.49=21235=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-a_1_a_filled_order11=CL-a_1_a_filled_order-X17=EX-a_1_a_filled_order-AUTO001150=039=055=IBM54=138=1000040=244=50.0032=0151=1000014=06=50.0010=116
+
+# 3: If order is rejected by trader/exchange
+8=FIX.4.49=25135=849=SELL156=BUY134=252=20240101-09:30:01.00037=ORD-a_1_a_filled_order11=CL-a_1_a_filled_order-X17=EX-a_1_a_filled_order-AUTO002150=839=855=IBM54=138=1000040=244=50.0032=0151=014=06=50.0058=If order is rejected by trader/exchange10=208

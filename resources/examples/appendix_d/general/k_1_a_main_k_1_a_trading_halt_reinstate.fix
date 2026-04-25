@@ -1,0 +1,17 @@
+# GENERAL K.1.a main
+# K.1.a - Trading Halt - Reinstate
+# Variant note: primary path from the non-italic rows
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: ExecInst set to reinstate on trading halt
+8=FIX.4.49=16635=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-k_1_a_trading_halt_reinstate-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=010=246
+
+# 2: Execution(X)
+8=FIX.4.49=24235=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-k_1_a_trading_halt_reinstate11=CL-k_1_a_trading_halt_reinstate-X17=EX-k_1_a_trading_halt_reinstate-AUTO001150=039=055=IBM54=138=1000040=244=50.0032=0151=1000014=06=50.0010=049
+
+# 3: Trading halt established
+
+# 4: Trading halt lifted
+
+# 5: Execution(X)
+8=FIX.4.49=25535=849=SELL156=BUY134=252=20240101-09:30:01.00037=ORD-k_1_a_trading_halt_reinstate11=CL-k_1_a_trading_halt_reinstate-X17=EX-k_1_a_trading_halt_reinstate-AUTO002150=F39=255=IBM54=138=1000040=244=50.0032=1000031=50.00151=014=100006=50.0010=166

@@ -1,0 +1,10 @@
+# GENERAL B.1.f main
+# B.1.f - Cancel request issued for an unknown order
+# Variant note: primary path from the non-italic rows
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: Cancel Request(Y,X)
+8=FIX.4.49=26835=F49=BUY156=SELL134=152=20240101-09:30:00.00041=CL-b_1_f_cancel_request_issued_for_an_unknown_order-X37=ORD-b_1_f_cancel_request_issued_for_an_unknown_order11=CL-b_1_f_cancel_request_issued_for_an_unknown_order-Y55=IBM54=160=20240101-09:30:01.00038=1000010=096
+
+# 2: Cancel request rejected with reject reason of "Unknown Order", OrdStatus is "Rejected" and OrderID is "NONE"
+8=FIX.4.49=19135=949=SELL156=BUY134=152=20240101-09:30:00.00037=NONE11=CL-b_1_f_cancel_request_issued_for_an_unknown_order-Y41=CL-b_1_f_cancel_request_issued_for_an_unknown_order-X39=8434=1102=110=032

@@ -1,0 +1,10 @@
+# GENERAL A.1.b alt01
+# A.1.b - Part-filled day order, done for day
+# Variant note: If order is rejected
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: New Order(X)
+8=FIX.4.49=17835=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-a_1_b_part_filled_day_order_done_for_day-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=010=183
+
+# 2: If order is rejected
+8=FIX.4.49=29835=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-a_1_b_part_filled_day_order_done_for_day11=CL-a_1_b_part_filled_day_order_done_for_day-X17=EX-a_1_b_part_filled_day_order_done_for_day-AUTO001150=839=855=IBM54=138=1000040=244=50.0032=0151=014=06=50.0058=If order is rejected10=189

@@ -1,0 +1,19 @@
+# GENERAL B.1.e main
+# B.1.e - Cancel request issued for an order that has not yet been acknowledged - the acknowledgment and the cancel request 'cross'
+# Variant note: primary path from the non-italic rows
+# Source: https://www.fixtrading.org/online-specification/order-state-changes/
+
+# 1: New Order(X)
+8=FIX.4.49=26135=D49=BUY156=SELL134=152=20240101-09:30:00.00011=CL-b_1_e_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged_the_acknowledgment_and_the_cancel_request_cross-X21=155=IBM54=160=20240101-09:30:01.00038=1000040=244=50.0015=USD59=010=221
+
+# 2: Order sender immediately wishes to cancel the order
+8=FIX.4.49=49335=F49=BUY156=SELL134=252=20240101-09:30:01.00041=CL-b_1_e_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged_the_acknowledgment_and_the_cancel_request_cross-X37=ORD-b_1_e_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged_the_acknowledgment_and_the_cancel_request_cross11=CL-b_1_e_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged_the_acknowledgment_and_the_cancel_request_cross-Y55=IBM54=160=20240101-09:30:02.00038=1000010=037
+
+# 2: This message crosses the cancel request
+8=FIX.4.49=52735=849=SELL156=BUY134=152=20240101-09:30:00.00037=ORD-b_1_e_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged_the_acknowledgment_and_the_cancel_request_cross11=CL-b_1_e_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged_the_acknowledgment_and_the_cancel_request_cross-X17=EX-b_1_e_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged_the_acknowledgment_and_the_cancel_request_cross-AUTO001150=039=055=IBM54=138=1000040=244=50.0032=0151=1000014=06=50.0010=248
+
+# 3: Execution (Y,X)
+8=FIX.4.49=65935=849=SELL156=BUY134=252=20240101-09:30:01.00037=ORD-b_1_e_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged_the_acknowledgment_and_the_cancel_request_cross11=CL-b_1_e_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged_the_acknowledgment_and_the_cancel_request_cross-Y41=CL-b_1_e_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged_the_acknowledgment_and_the_cancel_request_cross-X17=EX-b_1_e_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged_the_acknowledgment_and_the_cancel_request_cross-AUTO002150=639=655=IBM54=138=1000040=244=50.0032=0151=1000014=06=50.0010=022
+
+# 4: Order canceled.
+8=FIX.4.49=65535=849=SELL156=BUY134=352=20240101-09:30:02.00037=ORD-b_1_e_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged_the_acknowledgment_and_the_cancel_request_cross11=CL-b_1_e_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged_the_acknowledgment_and_the_cancel_request_cross-Y41=CL-b_1_e_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged_the_acknowledgment_and_the_cancel_request_cross-X17=EX-b_1_e_cancel_request_issued_for_an_order_that_has_not_yet_been_acknowledged_the_acknowledgment_and_the_cancel_request_cross-AUTO003150=439=455=IBM54=138=1000040=244=50.0032=0151=014=06=50.0010=080
