@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-FileCopyrightText: 2026 Steve Clarke <stephenlclarke@mac.com> - https://xyzzy.tools
+#
+# USAGE:
+#   fixdecoder [fixdecoder args...]
+#
+# Runs a locally built Rust fixdecoder application.
+#
+# Keep this script in `scripts/` inside a source checkout after `make build`
+# or `make build-release`.
+#
+# Environment:
+#   FIXDECODER_BIN  Use this executable instead of auto-discovering one.
+
+set -euo pipefail
+
+SELF_PATH="${BASH_SOURCE[0]:-$0}"
+readonly SELF_PATH
+SCRIPT_DIR="$(cd "$(dirname "$SELF_PATH")" && pwd)"
+readonly SCRIPT_DIR
+REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+readonly REPO_DIR
+TARGET_DIR="${REPO_DIR}/target"
+readonly TARGET_DIR
+
+# Write an error and exit.
+function error() {
+  printf '%s\n' "$*" >&2
+  exit 1
+}
+
+# Resolve the Rust binary to execute, preferring release builds.
+function resolve_binary() {
+  local candidate
+
+  if [[ -n "${FIXDECODER_BIN:-}" ]]; then
+    [[ -x "$FIXDECODER_BIN" ]] || error "FIXDECODER_BIN is not executable: ${FIXDECODER_BIN}"
+    printf '%s\n' "$FIXDECODER_BIN"
+    return
+  fi
+
+  for candidate in "${TARGET_DIR}/release/fixdecoder" "${TARGET_DIR}/debug/fixdecoder"; do
+    if [[ -x "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return
+    fi
+  done
+
+  error "fixdecoder binary not found; set FIXDECODER_BIN or run make build"
+}
+
+# Run the application, replacing this wrapper process.
+function main() {
+  local binary
+
+  binary=$(resolve_binary)
+  exec "$binary" "$@"
+}
+
+main "$@"

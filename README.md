@@ -51,18 +51,22 @@ fixdecoder is a FIX-aware “tail-like” tool and dictionary explorer. It reads
 ## Quick start
 
 ```bash
+make build
+
 # Stream and prettify stdin (pipeline-friendly)
-cat fixlog.txt | fixdecoder
+cat fixlog.txt | scripts/fixdecoder
 
 # Stream with validation + order summaries
-cat fixlog.txt | fixdecoder --validate --summary
+cat fixlog.txt | scripts/fixdecoder --validate --summary
 ```
-<!-- Screenshot: cat fixlog.txt | fixdecoder -->
-<!-- Screenshot: cat fixlog.txt | fixdecoder --validate --summary -->
+<!-- Screenshot: cat fixlog.txt | scripts/fixdecoder -->
+<!-- Screenshot: cat fixlog.txt | scripts/fixdecoder --validate --summary -->
 
 ## Running the fixdecoder utility
 
 You can run fixdecoder anywhere you can run a Rust binary — no extra OS dependencies or runtime services are required. It ships with a full set of embedded FIX dictionaries. The sections below cover the key options for selecting and browsing dictionaries, controlling output/formatting, and adjusting processing modes.
+
+From a source checkout, `scripts/fixdecoder` runs the local build artifact, preferring `target/release/fixdecoder` and falling back to `target/debug/fixdecoder`; set `FIXDECODER_BIN=/path/to/fixdecoder` to override discovery.
 
 The decoder now also exposes bat-style presentation controls for terminal use. You can add line numbers with `--number`, switch decorations with `--style=plain|numbers|header|grid|full`, disable decoration with `--plain`, and control paging with `--paging=auto|never|always`, `--pager=<CMD>`, and `--nowrap`.
 
