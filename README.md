@@ -33,7 +33,7 @@ I have written utilities like this in past in [Java](https://github.com/stephenl
     <img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-❤️-brightgreen?style=for-the-badge&logo=buymeacoffee&logoColor=white" alt="Buy Me a Coffee">
   </a>
   &nbsp;
-  <a href="https://github.com/stephenlclarke/fixdecoder/discussions">
+  <a href="https://github.com/stephenlclarke/fixdecoder_rs/discussions">
     <img src="https://img.shields.io/badge/Leave%20a%20Comment-💬-blue?style=for-the-badge" alt="Leave a Comment">
   </a>
 </p>
