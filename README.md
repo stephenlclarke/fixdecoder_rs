@@ -22,7 +22,7 @@
 
 This is my attempt to create an "all-singing / all-dancing" utility to pretty-print logfiles containing FIX Protocol messages while simultaneously learning **Rust** (after first building an earlier version in Go) and trying to incorporate SonarQube Code Quality metrics.
 
-I have written utilities like this in past in Java, Python, C, C++, [go](https://github.com/stephenlclarke/fixdecoder) and even in Bash/Awk!! This is my favourite one so far — and now it is fully native Rust.
+I have written utilities like this in past in [Java](https://github.com/stephenlclarke/fixdecoder_java), Python, C, C++, [go](https://github.com/stephenlclarke/fixdecoder_go) and even in Bash/Awk!! This is my favourite one so far — and now it is fully native Rust.
 
 ![repo title](docs/example.png)
 
