@@ -1291,6 +1291,13 @@ Run it (from the optimized build) and check the version details:
 fixdecoder 0.3.0 (branch:main, commit:f4ba8ce) [rust:1.96.0]
 ```
 
+Run the same build through the source-checkout wrapper:
+
+```bash
+❯ scripts/fixdecoder --version
+fixdecoder 0.3.0 (branch:main, commit:f4ba8ce) [rust:1.96.0]
+```
+
 <!-- regen-readme:end --section=build-examples -->
 
 # PCAP to FIX filter (`pcap2fix`)

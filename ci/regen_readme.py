@@ -341,6 +341,10 @@ def render_build_examples() -> str:
             "./target/release/fixdecoder --version",
             render_shell_command((str(FIXDECODER), "--version")),
         ),
+        BuildExample(
+            "scripts/fixdecoder --version",
+            render_shell_command((str(ROOT / "scripts" / "fixdecoder"), "--version")),
+        ),
     ]
 
     return format_build_examples(examples)
@@ -383,6 +387,12 @@ def format_build_examples(examples: list[BuildExample]) -> str:
         "",
         "```bash",
         format_prompted_output(examples[5]),
+        "```",
+        "",
+        "Run the same build through the source-checkout wrapper:",
+        "",
+        "```bash",
+        format_prompted_output(examples[6]),
         "```",
         "",
         "<!-- regen-readme:end --section=build-examples -->",
