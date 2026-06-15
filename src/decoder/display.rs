@@ -7,15 +7,13 @@
 //! The module-level comment keeps the tone informal yet informative.
 
 use crate::decoder::colours::{ColourPalette, palette};
-use crate::decoder::layout::{NEST_INDENT, TAG_WIDTH};
+use crate::decoder::layout::{ENTRY_FIELD_INDENT, NEST_INDENT, TAG_WIDTH};
 use crate::decoder::message_groups::{MessageBucket, classify_message_bucket};
 use crate::decoder::schema::{
-    ComponentNode, ContainerNode, ContainerNodeVisitor, Field, FieldNode, GroupNode, MessageNode,
-    SchemaTree, Value, walk_container_nodes,
+    ComponentNode, ContainerNode, Field, FieldNode, GroupNode, MessageNode, SchemaTree, Value,
 };
 use std::cmp;
 use std::collections::HashMap;
-use std::convert::Infallible;
 use std::fmt;
 use std::io::{self, Write};
 use terminal_size::{Width, terminal_size};
@@ -173,6 +171,8 @@ pub(crate) fn indent(level: usize) -> Indent {
 /// new vector for every field.
 type EnumBuffer<'a> = Vec<&'a Value>;
 
+const SCHEMA_GROUP_CHILD_INDENT: usize = ENTRY_FIELD_INDENT + 1;
+
 /// Collect values into the shared buffer and sort them for deterministic
 /// column output.  Saves the caller from having to clone per field.
 fn collect_sorted_values<'a, 'b, I>(buf: &'b mut EnumBuffer<'a>, iter: I) -> &'b [&'a Value]
@@ -191,6 +191,10 @@ fn format_required(required: bool, colours: ColourPalette) -> String {
     } else {
         String::new()
     }
+}
+
+fn component_header_indent(field_indent: usize) -> usize {
+    field_indent.saturating_sub(ENTRY_FIELD_INDENT)
 }
 
 #[cfg(test)]
@@ -635,6 +639,64 @@ mod tests {
     }
 
     #[test]
+    fn render_message_keeps_group_count_tags_outside_member_indent() {
+        crate::decoder::colours::disable_colours();
+
+        let schema = schema_with_structures();
+        let msg = schema.messages.get("NewOrder").unwrap();
+        let mut out = Vec::new();
+        let mut ctx = RenderContext::new(
+            &mut out,
+            &schema,
+            DisplayStyle::new(palette(), false),
+            false,
+        );
+        ctx.render_message(msg, false, false, 0).unwrap();
+
+        let rendered = String::from_utf8(out).unwrap();
+        let lines: Vec<&str> = rendered.lines().collect();
+        let group_count_index = lines
+            .iter()
+            .position(|line| line.contains("201: Allocs"))
+            .expect("top-level group count field should be present");
+        let group_member_index = lines[group_count_index + 1..]
+            .iter()
+            .position(|line| line.contains("999: TestField"))
+            .map(|offset| group_count_index + 1 + offset)
+            .expect("group member field should be present");
+        let component_index = lines[group_count_index + 1..]
+            .iter()
+            .position(|line| line.contains("Component: Block"))
+            .map(|offset| group_count_index + 1 + offset)
+            .expect("component inside group should be present");
+        let nested_count_index = lines[component_index + 1..]
+            .iter()
+            .position(|line| line.contains("200: Nested"))
+            .map(|offset| component_index + 1 + offset)
+            .expect("nested group count field should be present");
+        let nested_member_index = lines[nested_count_index + 1..]
+            .iter()
+            .position(|line| line.contains("999: TestField"))
+            .map(|offset| nested_count_index + 1 + offset)
+            .expect("nested group member field should be present");
+
+        assert_eq!(
+            leading_spaces(lines[group_member_index]),
+            leading_spaces(lines[group_count_index]) + SCHEMA_GROUP_CHILD_INDENT,
+            "top-level group count should sit outside member indentation:\n{rendered}"
+        );
+        assert_eq!(
+            leading_spaces(lines[nested_member_index]),
+            leading_spaces(lines[nested_count_index]) + SCHEMA_GROUP_CHILD_INDENT,
+            "nested group count should sit outside member indentation:\n{rendered}"
+        );
+        assert!(
+            leading_spaces(lines[component_index]) < leading_spaces(lines[group_member_index]),
+            "component heading should remain to the left of fields in that container:\n{rendered}"
+        );
+    }
+
+    #[test]
     fn cached_layout_is_reused_for_component() {
         let schema = schema_with_structures();
         let component = schema.components.get("Block").unwrap();
@@ -754,6 +816,10 @@ mod tests {
         write_with_padding(&mut out, 3, 5, |w| write!(w, "hey")).unwrap();
         let s = String::from_utf8(out).unwrap();
         assert!(s.ends_with("  "));
+    }
+
+    fn leading_spaces(line: &str) -> usize {
+        line.chars().take_while(|ch| *ch == ' ').count()
     }
 }
 
@@ -1137,7 +1203,12 @@ impl<'a, 'b, W: Write> RenderContext<'a, 'b, W> {
     ) -> io::Result<()> {
         let style = self.resolve_group_style(group, indent_level, style);
         self.render_group_header(group, indent_level, style)?;
-        self.render_entries(None, &group.entries, indent_level + NEST_INDENT, style)?;
+        self.render_entries(
+            None,
+            &group.entries,
+            indent_level + SCHEMA_GROUP_CHILD_INDENT,
+            style,
+        )?;
         Ok(())
     }
 
@@ -1148,8 +1219,35 @@ impl<'a, 'b, W: Write> RenderContext<'a, 'b, W> {
         indent_level: usize,
         style: DisplayStyle,
     ) -> io::Result<()> {
-        let mut visitor = RenderVisitor::new(self, msg, style);
-        walk_container_nodes(entries, indent_level, NEST_INDENT, &mut visitor)
+        for entry in entries {
+            match entry {
+                ContainerNode::Field(field) => {
+                    let colours = style.colours();
+                    print_field(self.out, field, indent_level, colours)?;
+                    if self.verbose {
+                        self.print_enums_for_field(field, msg, indent_level + 2, style)?;
+                    }
+                }
+                ContainerNode::Component(component) => {
+                    let header_indent = component_header_indent(indent_level);
+                    let nested_style =
+                        self.resolve_component_style(component, header_indent, style);
+                    self.render_component_header(component, header_indent, nested_style)?;
+                    self.render_entries(msg, &component.entries, indent_level, nested_style)?;
+                }
+                ContainerNode::Group(group) => {
+                    let nested_style = self.resolve_group_style(group, indent_level, style);
+                    self.render_group_header(group, indent_level, nested_style)?;
+                    self.render_entries(
+                        None,
+                        &group.entries,
+                        indent_level + SCHEMA_GROUP_CHILD_INDENT,
+                        nested_style,
+                    )?;
+                }
+            }
+        }
+        Ok(())
     }
 
     fn resolve_component_style(
@@ -1287,99 +1385,6 @@ impl<'a, 'b, W: Write> RenderContext<'a, 'b, W> {
             self.layout_cache.insert(key, value);
         }
         layout
-    }
-}
-
-struct RenderVisitor<'ctx, 'out, 'schema, W: Write> {
-    ctx: &'ctx mut RenderContext<'out, 'schema, W>,
-    msg: Option<&'schema MessageNode>,
-    style_stack: Vec<DisplayStyle>,
-}
-
-impl<'ctx, 'out, 'schema, W: Write> RenderVisitor<'ctx, 'out, 'schema, W> {
-    fn new(
-        ctx: &'ctx mut RenderContext<'out, 'schema, W>,
-        msg: Option<&'schema MessageNode>,
-        style: DisplayStyle,
-    ) -> Self {
-        Self {
-            ctx,
-            msg,
-            style_stack: vec![style],
-        }
-    }
-
-    fn current_style(&self) -> DisplayStyle {
-        *self
-            .style_stack
-            .last()
-            .expect("render visitor always has an active style")
-    }
-}
-
-impl<'ctx, 'out, 'schema, W: Write> ContainerNodeVisitor<'schema>
-    for RenderVisitor<'ctx, 'out, 'schema, W>
-{
-    type Error = io::Error;
-
-    fn visit_field(
-        &mut self,
-        field: &'schema FieldNode,
-        indent_level: usize,
-    ) -> Result<(), Self::Error> {
-        let style = self.current_style();
-        let colours = style.colours();
-        print_field(self.ctx.out, field, indent_level, colours)?;
-        if self.ctx.verbose {
-            self.ctx
-                .print_enums_for_field(field, self.msg, indent_level + 2, style)?;
-        }
-        Ok(())
-    }
-
-    fn enter_component(
-        &mut self,
-        component: &'schema ComponentNode,
-        indent_level: usize,
-    ) -> Result<(), Self::Error> {
-        let style = self
-            .ctx
-            .resolve_component_style(component, indent_level, self.current_style());
-        self.ctx
-            .render_component_header(component, indent_level, style)?;
-        self.style_stack.push(style);
-        Ok(())
-    }
-
-    fn leave_component(
-        &mut self,
-        _component: &'schema ComponentNode,
-        _indent_level: usize,
-    ) -> Result<(), Self::Error> {
-        self.style_stack.pop();
-        Ok(())
-    }
-
-    fn enter_group(
-        &mut self,
-        group: &'schema GroupNode,
-        indent_level: usize,
-    ) -> Result<(), Self::Error> {
-        let style = self
-            .ctx
-            .resolve_group_style(group, indent_level, self.current_style());
-        self.ctx.render_group_header(group, indent_level, style)?;
-        self.style_stack.push(style);
-        Ok(())
-    }
-
-    fn leave_group(
-        &mut self,
-        _group: &'schema GroupNode,
-        _indent_level: usize,
-    ) -> Result<(), Self::Error> {
-        self.style_stack.pop();
-        Ok(())
     }
 }
 
@@ -1665,7 +1670,11 @@ fn collect_component_layout(
 }
 
 fn collect_group_layout(group: &GroupNode, indent_level: usize, stats: &mut LayoutStats) {
-    collect_container_layout(&group.entries, indent_level + NEST_INDENT, stats);
+    collect_container_layout(
+        &group.entries,
+        indent_level + SCHEMA_GROUP_CHILD_INDENT,
+        stats,
+    );
 }
 
 fn collect_container_layout(
@@ -1673,9 +1682,23 @@ fn collect_container_layout(
     indent_level: usize,
     stats: &mut LayoutStats,
 ) {
-    let mut visitor = LayoutVisitor { stats };
-    walk_container_nodes(entries, indent_level, NEST_INDENT, &mut visitor)
-        .expect("layout collection cannot fail");
+    for entry in entries {
+        match entry {
+            ContainerNode::Field(field) => {
+                stats.record(field_layout_width(field), indent_level + 2)
+            }
+            ContainerNode::Component(component) => {
+                collect_container_layout(&component.entries, indent_level, stats);
+            }
+            ContainerNode::Group(group) => {
+                collect_container_layout(
+                    &group.entries,
+                    indent_level + SCHEMA_GROUP_CHILD_INDENT,
+                    stats,
+                );
+            }
+        }
+    }
 }
 
 fn field_layout_width(field: &FieldNode) -> usize {
@@ -1685,40 +1708,6 @@ fn field_layout_width(field: &FieldNode) -> usize {
         .map(|value| value.enumeration.len() + 2 + value.description.len())
         .max()
         .unwrap_or(0)
-}
-
-struct LayoutVisitor<'a> {
-    stats: &'a mut LayoutStats,
-}
-
-impl<'a> ContainerNodeVisitor<'a> for LayoutVisitor<'_> {
-    type Error = Infallible;
-
-    fn visit_field(
-        &mut self,
-        field: &'a FieldNode,
-        indent_level: usize,
-    ) -> Result<(), Self::Error> {
-        self.stats
-            .record(field_layout_width(field), indent_level + 2);
-        Ok(())
-    }
-
-    fn enter_component(
-        &mut self,
-        _component: &'a ComponentNode,
-        _indent_level: usize,
-    ) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn enter_group(
-        &mut self,
-        _group: &'a GroupNode,
-        _indent_level: usize,
-    ) -> Result<(), Self::Error> {
-        Ok(())
-    }
 }
 
 #[allow(dead_code)]

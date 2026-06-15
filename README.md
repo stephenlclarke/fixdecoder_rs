@@ -282,15 +282,15 @@ Message: NewOrderSingle (D)
           11: ClOrdID (STRING) - (Y)
          526: SecondaryClOrdID (STRING)
          583: ClOrdLinkID (STRING)
-        Component: Parties
-             453: NoPartyIDs (NUMINGROUP)
-                 448: PartyID (STRING)
-                 447: PartyIDSource (CHAR)
-                 452: PartyRole (INT)
-                Component: PtysSubGrp
-                     802: NoPartySubIDs (NUMINGROUP)
-                         523: PartySubID (STRING)
-                         803: PartySubIDType (INT)
+   Component: Parties
+         453: NoPartyIDs (NUMINGROUP)
+               448: PartyID (STRING)
+               447: PartyIDSource (CHAR)
+               452: PartyRole (INT)
+         Component: PtysSubGrp
+               802: NoPartySubIDs (NUMINGROUP)
+                     523: PartySubID (STRING)
+                     803: PartySubIDType (INT)
          229: TradeOriginationDate (LOCALMKTDATE)
           75: TradeDate (LOCALMKTDATE)
            1: Account (STRING)
@@ -300,9 +300,9 @@ Message: NewOrderSingle (D)
          590: BookingUnit (CHAR)
          591: PreallocMethod (CHAR)
           70: AllocID (STRING)
-        Component: PreAllocGrp
-              78: NoAllocs (NUMINGROUP)
-                  79: AllocAccount (STRING)
+   Component: PreAllocGrp
+          78: NoAllocs (NUMINGROUP)
+                79: AllocAccount (STRING)
 ...
 ```
 <!-- regen-readme:end --option=--message -->
@@ -321,10 +321,10 @@ Component: Instrument
       65: SymbolSfx (STRING)
       48: SecurityID (STRING)
       22: SecurityIDSource (STRING)
-    Component: SecAltIDGrp
-         454: NoSecurityAltID (NUMINGROUP)
-             455: SecurityAltID (STRING)
-             456: SecurityAltIDSource (STRING)
+Component: SecAltIDGrp
+     454: NoSecurityAltID (NUMINGROUP)
+           455: SecurityAltID (STRING)
+           456: SecurityAltIDSource (STRING)
      460: Product (INT)
      461: CFICode (STRING)
      167: SecurityType (STRING)
@@ -556,14 +556,14 @@ Run `make repeating-group-samples` if you want to regenerate the tracked repeati
 
 ```bash
 ❯ bash --version
-GNU bash, version 5.3.9(1)-release (aarch64-apple-darwin25.1.0)
+GNU bash, version 5.3.15(1)-release (aarch64-apple-darwin25.4.0)
 Copyright (C) 2025 Free Software Foundation, Inc.
 License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
 ```
 
 ```bash
 ❯ rustc --version
-rustc 1.94.1 (e408947bf 2026-03-25) (Homebrew)
+rustc 1.96.0 (ac68faa20 2026-05-25) (Homebrew)
 ```
 
 Clone the git repo.
@@ -581,409 +581,416 @@ If you want local Windows executables from macOS, `make build-windows` cross-com
 
 ```bash
 ❯ make clean build scan coverage build-release
-     Removed 10677 files, 1.9GiB total
+make[1]: Entering directory '.'
+     Removed 7003 files, 1.1GiB total
 
 >> Ensuring Rust toolchain and coverage tools
 
 >> Installing llvm-tools-preview component
-info: component 'llvm-tools' for target 'aarch64-apple-darwin' is up to date
+info: component llvm-tools is up to date
 
 >> Ensuring FIX XML specs are present
-    Blocking waiting for file lock on package cache
-    Blocking waiting for file lock on package cache
-    Blocking waiting for file lock on package cache
    Compiling minimal-lexical v0.2.1
    Compiling thiserror v1.0.69
-   Compiling thiserror-impl v1.0.69
-   Compiling circular v0.3.0
    Compiling pcap2fix v0.1.0 (pcap2fix)
+   Compiling thiserror-impl v1.0.69
+warning: fixdecoder@0.3.0: Building fixdecoder 0.3.0 (branch:main, commit:f4ba8ce) [rust:1.96.0]
    Compiling arrayvec v0.7.6
-warning: fixdecoder@0.3.0: Building fixdecoder 0.3.0 (branch:main, commit:82497ba) [rust:1.94.1]
+   Compiling circular v0.3.0
    Compiling fixdecoder v0.3.0 (.)
-   Compiling nom v7.1.3
    Compiling etherparse v0.15.0
+   Compiling nom v7.1.3
    Compiling rusticata-macros v4.1.0
    Compiling pcap-parser v0.14.1
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.87s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.94s
     Checking memchr v2.7.6
-    Checking bitflags v2.10.0
     Checking anstyle v1.0.13
+    Checking libc v0.2.186
+    Checking bitflags v2.10.0
     Checking regex-syntax v0.8.8
     Checking utf8parse v0.2.2
     Checking cfg-if v1.0.4
-    Checking anstyle-query v1.1.5
-    Checking colorchoice v1.0.4
-    Checking is_terminal_polyfill v1.70.2
-    Checking libc v0.2.186
-    Checking clap_lex v0.7.6
-    Checking strsim v0.11.1
-    Checking crossbeam-utils v0.8.21
     Checking num-traits v0.2.19
+    Checking is_terminal_polyfill v1.70.2
+    Checking colorchoice v1.0.4
+    Checking anstyle-query v1.1.5
+    Checking anstyle-parse v0.2.7
+    Checking strsim v0.11.1
+    Checking clap_lex v0.7.6
+    Checking crossbeam-utils v0.8.21
     Checking objc2-encode v4.1.0
     Checking anyhow v1.0.100
-    Checking predicates-core v1.0.9
-    Checking log v0.4.29
     Checking smallvec v1.15.1
-    Checking anstyle-parse v0.2.7
-    Checking scopeguard v1.2.0
-    Checking serde_core v1.0.228
-    Checking termtree v0.5.1
-   Compiling assert_cmd v2.1.1
-    Checking normalize-line-endings v0.3.0
-    Checking difflib v0.4.0
-    Checking lock_api v0.4.14
-    Checking core-foundation-sys v0.8.7
-   Compiling fixdecoder v0.3.0 (.)
-    Checking fastrand v2.3.0
-    Checking predicates-tree v1.0.12
     Checking anstream v0.6.21
-    Checking once_cell v1.21.3
+    Checking scopeguard v1.2.0
+    Checking predicates-core v1.0.9
+    Checking objc2 v0.6.3
+    Checking aho-corasick v1.1.4
+    Checking log v0.4.29
+    Checking lock_api v0.4.14
+    Checking serde_core v1.0.228
+    Checking clap_builder v4.5.53
+    Checking crossbeam-epoch v0.9.18
+    Checking float-cmp v0.10.0
+   Compiling assert_cmd v2.1.1
+    Checking difflib v0.4.0
+    Checking core-foundation-sys v0.8.7
+    Checking crossbeam-deque v0.8.6
+    Checking termtree v0.5.1
+    Checking normalize-line-endings v0.3.0
+    Checking errno v0.3.14
+    Checking parking_lot_core v0.9.12
+    Checking mio v1.2.0
+    Checking rayon-core v1.13.0
+    Checking signal-hook-registry v1.4.8
+    Checking rustix v1.1.2
+    Checking parking_lot v0.12.5
+    Checking rustix v0.38.44
+    Checking signal-hook v0.3.18
+    Checking predicates-tree v1.0.12
+    Checking block2 v0.6.2
+    Checking getrandom v0.3.4
+    Checking nix v0.30.1
+    Checking signal-hook-mio v0.2.5
+    Checking wait-timeout v0.2.1
+    Checking iana-time-zone v0.1.64
+   Compiling fixdecoder v0.3.0 (.)
+    Checking regex-automata v0.4.13
     Checking either v1.15.0
+    Checking dispatch2 v0.3.0
+    Checking fastrand v2.3.0
+    Checking once_cell v1.21.3
+    Checking rayon v1.11.0
+    Checking crossterm v0.28.1
+    Checking chrono v0.4.42
+    Checking roxmltree v0.21.1
+    Checking clap v4.5.53
+    Checking ctrlc v3.5.1
     Checking shlex v1.3.0
     Checking minimal-lexical v0.2.1
    Compiling pcap2fix v0.1.0 (pcap2fix)
-    Checking objc2 v0.6.3
-    Checking arrayvec v0.7.6
-    Checking circular v0.3.0
-    Checking iana-time-zone v0.1.64
-    Checking thiserror v1.0.69
-    Checking clap_builder v4.5.53
-    Checking crossbeam-epoch v0.9.18
-    Checking aho-corasick v1.1.4
-    Checking roxmltree v0.21.1
-    Checking nom v7.1.3
-    Checking etherparse v0.15.0
-    Checking float-cmp v0.10.0
-    Checking chrono v0.4.42
-    Checking crossbeam-deque v0.8.6
-    Checking rayon-core v1.13.0
-    Checking errno v0.3.14
-    Checking mio v1.2.0
-    Checking parking_lot_core v0.9.12
-    Checking wait-timeout v0.2.1
-    Checking getrandom v0.3.4
-    Checking nix v0.30.1
-    Checking signal-hook-registry v1.4.8
-    Checking rustix v1.1.2
-    Checking rustix v0.38.44
-    Checking parking_lot v0.12.5
-    Checking signal-hook v0.3.18
-    Checking rayon v1.11.0
-    Checking block2 v0.6.2
-    Checking signal-hook-mio v0.2.5
-    Checking crossterm v0.28.1
-    Checking dispatch2 v0.3.0
-    Checking regex-automata v0.4.13
-    Checking rusticata-macros v4.1.0
-    Checking pcap-parser v0.14.1
-    Checking clap v4.5.53
-    Checking ctrlc v3.5.1
     Checking serde v1.0.228
-    Checking terminal_size v0.4.3
+    Checking nom v7.1.3
+    Checking arrayvec v0.7.6
     Checking tempfile v3.23.0
-warning: fixdecoder@0.3.0: Building fixdecoder v0.3.0 (branch:main, commit:82497ba) [rust:1.94.1]
+    Checking terminal_size v0.4.3
+    Checking circular v0.3.0
+    Checking etherparse v0.15.0
+    Checking thiserror v1.0.69
+warning: fixdecoder@0.3.0: Building fixdecoder v0.3.0 (branch:main, commit:f4ba8ce) [rust:1.96.0]
     Checking quick-xml v0.36.2
     Checking regex v1.12.2
     Checking bstr v1.12.1
+    Checking rusticata-macros v4.1.0
+    Checking pcap-parser v0.14.1
     Checking predicates v3.1.3
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.08s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 5.55s
 Running cargo-audit (text output)
-      Loaded 884 security advisories (from ~/.cargo/advisory-db)
+      Loaded 1053 security advisories (from ~/.cargo/advisory-db)
     Scanning Cargo.lock for vulnerabilities (154 crate dependencies)
 Running cargo-audit (SARIF) → target/coverage/rustsec.sarif
 info: cargo-llvm-cov currently setting cfg(coverage); you can opt-out it by passing --no-cfg-coverage
    Compiling libc v0.2.186
-   Compiling memchr v2.7.6
    Compiling proc-macro2 v1.0.103
-   Compiling unicode-ident v1.0.22
+   Compiling memchr v2.7.6
    Compiling quote v1.0.42
    Compiling serde_core v1.0.228
+   Compiling unicode-ident v1.0.22
    Compiling winnow v1.0.2
    Compiling autocfg v1.5.0
    Compiling version_check v0.9.5
    Compiling bitflags v2.10.0
    Compiling anstyle v1.0.13
    Compiling regex-syntax v0.8.8
-   Compiling cfg-if v1.0.4
-   Compiling utf8parse v0.2.2
-   Compiling colorchoice v1.0.4
-   Compiling anstyle-query v1.1.5
-   Compiling is_terminal_polyfill v1.70.2
-   Compiling crossbeam-utils v0.8.21
-   Compiling clap_lex v0.7.6
-   Compiling anstyle-parse v0.2.7
-   Compiling anyhow v1.0.100
-   Compiling strsim v0.11.1
-   Compiling objc2 v0.6.3
-   Compiling heck v0.5.0
-   Compiling anstream v0.6.21
-   Compiling objc2-encode v4.1.0
-   Compiling rustix v1.1.2
-   Compiling cfg_aliases v0.2.1
-   Compiling parking_lot_core v0.9.12
    Compiling toml_parser v1.1.2+spec-1.1.0
+   Compiling utf8parse v0.2.2
    Compiling num-traits v0.2.19
    Compiling aho-corasick v1.1.4
+   Compiling cfg-if v1.0.4
+   Compiling anstyle-parse v0.2.7
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling colorchoice v1.0.4
+   Compiling crossbeam-utils v0.8.21
+   Compiling anstyle-query v1.1.5
+   Compiling anstream v0.6.21
+   Compiling objc2 v0.6.3
+   Compiling heck v0.5.0
+   Compiling strsim v0.11.1
+   Compiling anyhow v1.0.100
+   Compiling clap_lex v0.7.6
+   Compiling regex-automata v0.4.13
    Compiling clap_builder v4.5.53
+   Compiling syn v2.0.111
+   Compiling errno v0.3.14
    Compiling signal-hook v0.3.18
+   Compiling rustix v1.1.2
+   Compiling parking_lot_core v0.9.12
+   Compiling serde_spanned v1.1.1
+   Compiling toml_datetime v1.1.1+spec-1.1.0
+   Compiling objc2-encode v4.1.0
+   Compiling toml v1.1.2+spec-1.1.0
+   Compiling cfg_aliases v0.2.1
    Compiling nix v0.30.1
-   Compiling log v0.4.29
+   Compiling crossbeam-epoch v0.9.18
+   Compiling regex v1.12.2
+   Compiling winresource v0.1.31
+   Compiling signal-hook-registry v1.4.8
    Compiling scopeguard v1.2.0
-   Compiling serde v1.0.228
-   Compiling rustix v0.38.44
-   Compiling getrandom v0.3.4
-   Compiling semver v1.0.27
-   Compiling smallvec v1.15.1
    Compiling rayon-core v1.13.0
    Compiling predicates-core v1.0.9
-   Compiling rustc_version v0.4.1
-   Compiling regex-automata v0.4.13
-   Compiling crossbeam-epoch v0.9.18
-   Compiling syn v2.0.111
-   Compiling crossbeam-deque v0.8.6
-   Compiling lock_api v0.4.14
-   Compiling difflib v0.4.0
-   Compiling regex v1.12.2
-   Compiling errno v0.3.14
+   Compiling semver v1.0.27
+   Compiling serde v1.0.228
+   Compiling rustix v0.38.44
+   Compiling log v0.4.29
+   Compiling smallvec v1.15.1
+   Compiling getrandom v0.3.4
    Compiling mio v1.2.0
-   Compiling toml_datetime v1.1.1+spec-1.1.0
-   Compiling serde_spanned v1.1.1
-   Compiling signal-hook-registry v1.4.8
    Compiling block2 v0.6.2
-   Compiling toml v1.1.2+spec-1.1.0
+   Compiling rustc_version v0.4.1
+   Compiling lock_api v0.4.14
+   Compiling crossbeam-deque v0.8.6
+   Compiling float-cmp v0.10.0
    Compiling normalize-line-endings v0.3.0
    Compiling assert_cmd v2.1.1
-   Compiling core-foundation-sys v0.8.7
    Compiling termtree v0.5.1
-   Compiling dispatch2 v0.3.0
-   Compiling predicates-tree v1.0.12
-   Compiling iana-time-zone v0.1.64
-   Compiling wait-timeout v0.2.1
-   Compiling bstr v1.12.1
-   Compiling once_cell v1.21.3
-   Compiling fastrand v2.3.0
-   Compiling winresource v0.1.31
-   Compiling parking_lot v0.12.5
-   Compiling either v1.15.0
-   Compiling roxmltree v0.21.1
-   Compiling shlex v1.3.0
-   Compiling minimal-lexical v0.2.1
-   Compiling fixdecoder v0.3.0 (.)
-   Compiling thiserror v1.0.69
-   Compiling pcap2fix v0.1.0 (pcap2fix)
-   Compiling nom v7.1.3
-   Compiling arrayvec v0.7.6
-   Compiling circular v0.3.0
-   Compiling etherparse v0.15.0
-   Compiling float-cmp v0.10.0
-   Compiling chrono v0.4.42
+   Compiling difflib v0.4.0
    Compiling clap_derive v4.5.49
    Compiling serde_derive v1.0.228
+   Compiling core-foundation-sys v0.8.7
+   Compiling iana-time-zone v0.1.64
    Compiling predicates v3.1.3
-   Compiling thiserror-impl v1.0.69
+   Compiling predicates-tree v1.0.12
+   Compiling parking_lot v0.12.5
+   Compiling fixdecoder v0.3.0 (.)
    Compiling signal-hook-mio v0.2.5
-   Compiling rusticata-macros v4.1.0
-   Compiling terminal_size v0.4.3
-   Compiling pcap-parser v0.14.1
-   Compiling crossterm v0.28.1
-   Compiling clap v4.5.53
-   Compiling tempfile v3.23.0
-   Compiling rayon v1.11.0
+   Compiling dispatch2 v0.3.0
+   Compiling bstr v1.12.1
+   Compiling wait-timeout v0.2.1
+   Compiling fastrand v2.3.0
+   Compiling either v1.15.0
+   Compiling once_cell v1.21.3
    Compiling ctrlc v3.5.1
-warning: fixdecoder@0.3.0: Building fixdecoder v0.3.0 (branch:main, commit:82497ba) [rust:1.94.1]
+   Compiling rayon v1.11.0
+   Compiling crossterm v0.28.1
+   Compiling terminal_size v0.4.3
+   Compiling chrono v0.4.42
+   Compiling tempfile v3.23.0
+   Compiling roxmltree v0.21.1
+   Compiling clap v4.5.53
+   Compiling shlex v1.3.0
+   Compiling minimal-lexical v0.2.1
+   Compiling thiserror v1.0.69
+warning: fixdecoder@0.3.0: Building fixdecoder v0.3.0 (branch:main, commit:f4ba8ce) [rust:1.96.0]
+   Compiling thiserror-impl v1.0.69
+   Compiling pcap2fix v0.1.0 (pcap2fix)
+   Compiling arrayvec v0.7.6
+   Compiling nom v7.1.3
+   Compiling circular v0.3.0
+   Compiling etherparse v0.15.0
+   Compiling rusticata-macros v4.1.0
+   Compiling pcap-parser v0.14.1
    Compiling quick-xml v0.36.2
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.00s
-     Running unittests src/main.rs (target/llvm-cov-target/debug/deps/fixdecoder-798e8fa58cf38023)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 12.48s
+     Running unittests src/main.rs (target/llvm-cov-target/debug/deps/fixdecoder-93217b850ffa7b10)
 
-running 272 tests
+running 273 tests
+test decoder::display::tests::layout_stats_produces_layout ... ok
+test decoder::display::tests::collect_sorted_values_orders_by_enum ... ok
+test decoder::display::tests::compute_values_layout_uses_max_entry ... ok
+test decoder::display::tests::pad_ansi_extends_to_requested_width ... ok
+test decoder::display::tests::collect_group_layout_counts_nested_components ... ok
+test decoder::display::tests::print_field_renders_required_indicator ... ok
+test decoder::display::tests::render_component_prints_matching_msg_type_enum_only ... ok
+test decoder::display::tests::print_enum_outputs_coloured_enum ... ok
+test decoder::display::tests::compute_message_layout_counts_header_and_trailer ... ok
+test decoder::display::tests::print_enum_columns_respects_layout_columns ... ok
+test decoder::display::tests::render_message_includes_header_and_trailer ... ok
+test decoder::display::tests::tag_and_message_cells_include_expected_text ... ok
+test decoder::display::tests::terminal_width_is_positive ... ok
+test decoder::display::tests::render_message_keeps_group_count_tags_outside_member_indent ... ok
+test decoder::display::tests::render_message_preserves_interleaved_container_order ... ok
 test decoder::display::tests::visible_len_ignores_escape_sequences ... ok
+test decoder::display::tests::grouped_message_listing_separates_admin_and_business_buckets ... ok
 test decoder::display::tests::visible_width_counts_multibyte_glyphs_once ... ok
 test decoder::display::tests::visible_width_ignores_ansi_sequences ... ok
 test decoder::display::tests::visible_width_ignores_control_characters ... ok
-test decoder::display::tests::terminal_width_is_positive ... ok
-test decoder::display::tests::pad_ansi_extends_to_requested_width ... ok
-test decoder::display::tests::layout_stats_produces_layout ... ok
 test decoder::display::tests::write_with_padding_adds_spaces ... ok
-test decoder::display::tests::print_enum_outputs_coloured_enum ... ok
+test decoder::display::tests::cached_layout_is_reused_for_component ... ok
 test decoder::message_groups::tests::explicit_mapping_matches_expected_bucket_samples ... ok
-test decoder::display::tests::print_enum_columns_respects_layout_columns ... ok
-test decoder::display::tests::print_field_renders_required_indicator ... ok
-test decoder::display::tests::tag_and_message_cells_include_expected_text ... ok
-test decoder::display::tests::collect_group_layout_counts_nested_components ... ok
-test decoder::display::tests::compute_values_layout_uses_max_entry ... ok
-test decoder::display::tests::compute_message_layout_counts_header_and_trailer ... ok
 test decoder::prettifier::tests::max_visible_line_width_tracks_longest_rendered_line ... ok
-test decoder::display::tests::render_component_prints_matching_msg_type_enum_only ... ok
-test decoder::display::tests::grouped_message_listing_separates_admin_and_business_buckets ... ok
-test decoder::display::tests::render_message_includes_header_and_trailer ... ok
-test decoder::display::tests::render_message_preserves_interleaved_container_order ... ok
-test decoder::display::tests::collect_sorted_values_orders_by_enum ... ok
+test decoder::prettifier::tests::group_labels_use_group_name_without_padding ... ok
+test decoder::prettifier::tests::build_tag_order_respects_annotations_and_trailer ... ok
 test decoder::prettifier::tests::read_line_with_follow_returns_zero_on_eof ... ok
+test decoder::prettifier::tests::header_and_trailer_are_repositioned_when_out_of_place ... ok
 test decoder::prettifier::tests::render_separator_expands_when_wide_grid_is_enabled ... ok
+test decoder::prettifier::tests::message_count_summary_includes_separator_before_header ... ok
+test decoder::prettifier::tests::prettify_aligns_group_entries_without_header ... ok
+test decoder::message_groups::tests::explicit_mapping_covers_all_embedded_application_messages ... ok
+test decoder::prettifier::tests::prettify_files_preserves_input_order_when_parallelised ... ok
 test decoder::prettifier::tests::source_line_visible_width_counts_line_numbers_and_soh_markers ... ok
 test decoder::prettifier::tests::trim_line_endings_strips_crlf ... ok
-test decoder::display::tests::cached_layout_is_reused_for_component ... ok
-test decoder::message_groups::tests::explicit_mapping_covers_all_embedded_application_messages ... ok
+test decoder::prettifier::tests::prettify_files_validation_skips_message_counts_for_clean_messages ... ok
 test decoder::prettifier::tests::prettify_includes_missing_tag_annotations_once ... ok
-test decoder::prettifier::tests::build_tag_order_respects_annotations_and_trailer ... ok
-test decoder::prettifier::tests::header_and_trailer_are_repositioned_when_out_of_place ... ok
+test decoder::prettifier::tests::prettify_orders_without_msg_type_header_first ... ok
+test decoder::prettifier::tests::render_message_counts_separates_admin_and_groups_business_messages ... ok
 test decoder::schema::tests::parse_message_fields ... ok
 test decoder::schema::tests::parse_message_with_components ... ok
 test decoder::schema::tests::parse_simple_vec ... ok
-test decoder::prettifier::tests::message_count_summary_includes_separator_before_header ... ok
-test decoder::prettifier::tests::prettify_aligns_group_entries_without_header ... ok
 test decoder::schema::tests::schema_tree_preserves_message_entry_order ... ok
-test decoder::summary::appendix_d_summary_tests::EXCHANGE_A_1_b_alt01 ... ok
 test decoder::summary::appendix_d_summary_tests::EXCHANGE_A_1_a_alt01 ... ok
 test decoder::summary::appendix_d_summary_tests::EXCHANGE_A_1_a_alt02 ... ok
 test decoder::summary::appendix_d_summary_tests::EXCHANGE_A_1_a_main ... ok
-test decoder::summary::appendix_d_summary_tests::EXCHANGE_A_1_c_alt01 ... ok
-test decoder::summary::appendix_d_summary_tests::EXCHANGE_A_1_d_alt01 ... ok
-test decoder::summary::appendix_d_summary_tests::EXCHANGE_A_1_c_main ... ok
-test decoder::summary::appendix_d_summary_tests::EXCHANGE_I_1_a_alt01 ... ok
-test decoder::summary::appendix_d_summary_tests::EXCHANGE_A_1_d_main ... ok
+test decoder::summary::appendix_d_summary_tests::EXCHANGE_A_1_b_alt01 ... ok
 test decoder::summary::appendix_d_summary_tests::EXCHANGE_A_1_b_main ... ok
-test decoder::summary::appendix_d_summary_tests::EXCHANGE_I_1_b_alt01 ... ok
+test decoder::summary::appendix_d_summary_tests::EXCHANGE_A_1_c_alt01 ... ok
+test decoder::summary::appendix_d_summary_tests::EXCHANGE_A_1_c_main ... ok
+test decoder::summary::appendix_d_summary_tests::EXCHANGE_A_1_d_alt01 ... ok
+test decoder::summary::appendix_d_summary_tests::EXCHANGE_A_1_d_main ... ok
+test decoder::summary::appendix_d_summary_tests::EXCHANGE_I_1_a_alt01 ... ok
 test decoder::summary::appendix_d_summary_tests::EXCHANGE_I_1_a_alt02 ... ok
 test decoder::summary::appendix_d_summary_tests::EXCHANGE_I_1_a_main ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_A_1_a_alt01 ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_A_1_a_alt02 ... ok
+test decoder::summary::appendix_d_summary_tests::EXCHANGE_I_1_b_alt01 ... ok
 test decoder::summary::appendix_d_summary_tests::EXCHANGE_I_1_b_alt02 ... ok
 test decoder::summary::appendix_d_summary_tests::EXCHANGE_I_1_b_main ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_A_1_b_alt01 ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_A_1_a_alt01 ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_A_1_a_alt02 ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_A_1_a_main ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_A_1_b_alt01 ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_A_1_b_main ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_B_1_a_alt01 ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_B_1_a_alt02 ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_A_1_b_main ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_B_1_a_alt03 ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_B_1_b_alt01 ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_B_1_a_main ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_B_1_c_alt01 ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_B_1_b_alt01 ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_B_1_b_alt02 ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_B_1_c_alt02 ... ok
+test decoder::prettifier::tests::renders_allocation_instruction_fixture_with_order_groups ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_B_1_b_alt03 ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_B_1_c_alt01 ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_B_1_c_alt02 ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_B_1_b_main ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_B_1_f_main ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_C_1_a_alt01 ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_B_1_c_main ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_B_1_d_main ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_B_1_f_main ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_B_1_e_main ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_C_1_a_alt01 ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_C_1_a_alt02 ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_C_1_a_alt03 ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_C_1_b_alt01 ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_B_1_d_main ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_C_1_a_main ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_C_1_b_alt02 ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_C_1_c_alt01 ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_C_1_b_alt03 ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_C_1_c_alt02 ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_C_2_a_alt01 ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_C_1_c_alt03 ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_C_1_c_alt01 ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_C_1_b_main ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_C_3_a_alt01 ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_C_1_c_alt02 ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_C_1_c_alt03 ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_C_2_a_alt01 ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_C_1_c_main ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_C_3_a_alt01 ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_C_2_a_main ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_C_3_a_alt02 ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_C_3_b_alt01 ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_C_3_c_alt01 ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_C_3_a_alt03 ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_C_3_b_alt01 ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_C_3_b_main ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_C_3_a_main ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_C_3_c_alt01 ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_D_1_a_alt01 ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_C_3_c_main ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_D_1_b_alt01 ... ok
+test decoder::prettifier::tests::renders_market_data_fixture_with_bid_and_offer_entries ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_D_1_c_alt01 ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_C_3_a_main ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_D_1_b_main ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_D_1_c_alt02 ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_D_1_a_main ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_D_1_c_main ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_D_1_c_alt02 ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_D_2_a_main ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_D_2_c_main ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_D_2_b_main ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_D_2_d_main ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_D_1_c_main ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_E_1_a_main ... ok
-test decoder::prettifier::tests::prettify_files_preserves_input_order_when_parallelised ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_E_1_b_alt01 ... ok
-test decoder::prettifier::tests::group_labels_use_group_name_without_padding ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_E_1_c_alt01 ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_E_1_d_alt01 ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_E_1_b_main ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_E_1_f_alt01 ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_E_1_e_alt01 ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_E_1_e_main ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_E_1_c_alt01 ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_D_2_c_main ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_E_1_d_alt01 ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_D_2_d_main ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_E_1_c_main ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_E_1_e_alt01 ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_E_1_d_main ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_E_1_f_alt01 ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_E_1_e_main ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_F_1_a_main ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_E_1_f_main ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_F_1_c_main ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_G_1_b_alt01 ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_E_1_f_main ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_F_1_a_main ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_F_1_b_main ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_G_1_a_main ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_G_1_b_main ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_G_1_c_alt01 ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_F_1_b_main ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_H_1_a_main ... ok
+test decoder::prettifier::tests::renders_parties_fixture_with_nested_party_sub_ids ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_H_1_b_main ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_H_1_c_alt01 ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_H_1_c_alt02 ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_I_1_a_alt01 ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_H_1_d_alt01 ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_I_1_a_main ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_H_1_c_main ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_H_1_d_alt01 ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_I_1_a_alt01 ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_I_1_a_main ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_I_1_b_alt01 ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_J_1_a_alt01 ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_I_1_b_main ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_H_1_d_alt02 ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_H_1_d_main ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_K_1_a_alt01 ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_I_1_b_main ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_J_1_a_alt01 ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_J_1_b_main ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_G_1_c_main ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_K_1_a_alt01 ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_J_1_c_main ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_K_1_a_main ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_K_1_b_alt01 ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_L_1_a_alt01 ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_K_1_b_main ... ok
 test decoder::summary::appendix_d_summary_tests::GENERAL_J_1_d_main ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_L_1_a_alt01 ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_J_1_c_main ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_L_1_b_alt01 ... ok
 test decoder::summary::tests::absorb_fields_sets_block_notice_specifics ... ok
 test decoder::summary::tests::absorb_fields_sets_core_values ... ok
 test decoder::summary::tests::bn_message_sets_state_and_spot_price ... ok
 test decoder::summary::tests::build_summary_row_includes_bn_headers ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_L_1_b_alt01 ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_J_1_a_main ... ok
 test decoder::summary::tests::date_diff_days_returns_none_when_incomplete ... ok
 test decoder::summary::tests::display_instrument_formats_side_and_symbol ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_L_1_a_main ... ok
 test decoder::summary::tests::extract_date_part_handles_timestamp ... ok
+test decoder::summary::tests::collects_states_for_single_order ... ok
 test decoder::summary::tests::flow_label_skips_leading_unknown ... ok
 test decoder::summary::tests::ignores_non_order_flow_messages_without_resolvable_ids ... ok
 test decoder::summary::tests::ignores_standard_admin_messages ... ok
-test decoder::summary::tests::links_orders_using_order_id_and_cl_ord_id ... ok
-test decoder::summary::tests::collects_states_for_single_order ... ok
 test decoder::summary::tests::preferred_settlement_date_prefers_primary_then_secondary ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_L_1_a_main ... ok
+test decoder::summary::appendix_d_summary_tests::GENERAL_L_1_b_main ... ok
 test decoder::summary::tests::render_record_header_includes_id_and_instrument ... ok
 test decoder::summary::tests::resolve_key_prefers_alias_then_ids ... ok
+test decoder::summary::tests::render_outputs_state_headline ... ok
 test decoder::summary::tests::state_path_deduplicates_consecutive_states ... ok
 test decoder::summary::tests::state_path_orders_by_time_and_deduplicates_repeated_events ... ok
-test decoder::summary::tests::render_outputs_state_headline ... ok
-test decoder::summary::tests::paged_sections_accumulate_admin_counts_through_visible_order ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_L_1_b_main ... ok
-test decoder::summary::tests::terminal_status_from_non_exec_report_updates_header ... ok
+test decoder::summary::tests::links_orders_using_order_id_and_cl_ord_id ... ok
 test decoder::summary::tests::transact_time_falls_back_to_trade_date_for_tenor_math ... ok
-test decoder::summary_pager::tests::slice_ansi_offsets_ignore_control_characters ... ok
+test decoder::summary::tests::paged_sections_accumulate_admin_counts_through_visible_order ... ok
+test decoder::summary::tests::terminal_status_from_non_exec_report_updates_header ... ok
 test decoder::summary_pager::tests::cumulative_summary_tracks_bottom_of_visible_pane ... ok
 test decoder::summary_pager::tests::slice_ansi_respects_visible_offsets ... ok
-test decoder::summary_pager::tests::section_index_tracks_scroll_position ... ok
+test decoder::summary_pager::tests::slice_ansi_offsets_ignore_control_characters ... ok
 test decoder::tag_lookup::tests::detects_schema_from_default_appl_ver_id ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_J_1_a_main ... ok
-test decoder::summary::appendix_d_summary_tests::GENERAL_G_1_c_main ... ok
-test decoder::prettifier::tests::prettify_files_validation_skips_message_counts_for_clean_messages ... ok
+test decoder::summary_pager::tests::section_index_tracks_scroll_position ... ok
+test decoder::prettifier::tests::renders_prealloc_fixture_with_each_allocation_entry ... ok
+test decoder::prettifier::tests::separators_bracket_source_line_in_wide_grid_mode ... ok
+test decoder::prettifier::tests::validation_inserts_missing_tags ... ok
 test decoder::validator::tests::allows_component_first_group_entries ... ok
 test decoder::validator::tests::allows_repeating_group_tags ... ok
+test decoder::prettifier::tests::validation_only_outputs_invalid_messages ... ok
 test decoder::validator::tests::detects_body_length_mismatch ... ok
 test decoder::validator::tests::detects_checksum_mismatch ... ok
-test decoder::validator::tests::detects_duplicate_top_level_tag_even_if_repeatable_elsewhere ... ok
 test decoder::validator::tests::detects_invalid_enum_and_type ... ok
+test decoder::validator::tests::detects_duplicate_top_level_tag_even_if_repeatable_elsewhere ... ok
 test decoder::validator::tests::detects_invalid_numingroup_and_tag_outside_group ... ok
 test decoder::validator::tests::detects_out_of_order_tags_within_group ... ok
-test decoder::validator::tests::detects_unknown_msg_type ... ok
 test decoder::validator::tests::helper_checksum_and_body_length_fall_back_when_fields_are_missing ... ok
-test decoder::validator::tests::helper_type_validators_cover_temporal_formats ... ok
+test decoder::validator::tests::detects_unknown_msg_type ... ok
 test decoder::validator::tests::missing_checksum_is_reported ... ok
 test decoder::validator::tests::missing_msg_type_still_reports_length_and_tag ... ok
 test decoder::validator::tests::multiple_group_entries_do_not_trigger_top_level_order_errors ... ok
@@ -992,193 +999,275 @@ test decoder::validator::tests::optional_group_children_are_not_required_when_gr
 test decoder::validator::tests::required_group_fields_are_validated_per_entry ... ok
 test decoder::validator::tests::required_group_requires_count_tag_not_child_tags ... ok
 test fix::obfuscator::tests::disabled_obfuscator_returns_original_line_and_reset_is_noop ... ok
+test decoder::validator::tests::helper_type_validators_cover_temporal_formats ... ok
 test fix::obfuscator::tests::obfuscate_line_leaves_non_sensitive_and_malformed_fragments_unchanged ... ok
 test fix::obfuscator::tests::obfuscate_line_preserves_mixed_log_context_and_repairs_fix_lengths ... ok
-test fix::obfuscator::tests::reset_starts_aliases_over ... ok
 test fix::obfuscator::tests::split_once_accepts_equals_and_soh_delimiters ... ok
 test fix::tests::choose_embedded_xml_defaults_to_fix44 ... ok
+test fix::obfuscator::tests::reset_starts_aliases_over ... ok
 test fix::tests::supported_versions_and_factory_cover_public_helpers ... ok
-test tests::add_entity_arg_defaults_to_true_when_missing_value ... ok
 test tests::add_flag_args_sets_flags ... ok
+test tests::add_entity_arg_defaults_to_true_when_missing_value ... ok
 test tests::build_cli_parses_bat_style_flags ... ok
 test tests::build_cli_parses_follow_and_summary_flags ... ok
-test tests::build_cli_rejects_duplicate_single_value_args ... ok
 test tests::build_context_disables_live_status_when_paging_is_active ... ok
 test tests::component_def_has_entries_detects_fields_groups_and_components ... ok
 test tests::default_less_command_adds_no_wrap_flag ... ok
+test tests::build_cli_rejects_duplicate_single_value_args ... ok
 test tests::dictionary_key_includes_service_pack ... ok
 test tests::dictionary_marker_highlights_selected_entry ... ok
 test tests::dictionary_source_prefers_custom_entry ... ok
 test tests::effective_less_options_add_horizontal_scroll_only_for_nowrap ... ok
 test tests::effective_less_options_strip_horizontal_scroll_when_nowrap_is_disabled ... ok
-test decoder::tag_lookup::tests::load_dictionary_respects_override_key ... ok
-test decoder::tag_lookup::tests::new_order_single_does_not_inherit_unreachable_group_memberships ... ok
-test tests::final_exit_code_marks_interrupt ... ok
 test tests::explicit_paging_overrides_summary_default ... ok
+test tests::final_exit_code_marks_interrupt ... ok
+test tests::ensure_session_components_backfills_missing_fix50_header_and_trailer ... ok
 test tests::invalid_fix_version_errors ... ok
-test decoder::tag_lookup::tests::override_uses_fallback_dictionary_for_missing_tags ... ok
+test tests::find_message_supports_name_and_msg_type_queries ... ok
 test tests::merged_less_options_appends_once ... ok
 test tests::multi_file_pager_rejects_shell_commands ... ok
 test tests::multi_file_pager_requires_multiple_real_files ... ok
 test tests::normalise_fix_key_handles_variants ... ok
-test decoder::tag_lookup::tests::repeatable_tags_include_nested_groups ... ok
 test tests::normalise_less_command_preserves_shell_pipeline_commands ... ok
-test decoder::tag_lookup::tests::session_default_guides_fixt_messages_without_appl_ver_id ... ok
-test decoder::tag_lookup::tests::warns_and_falls_back_on_unknown_override ... ok
 test tests::normalise_less_command_reapplies_nowrap_flags ... ok
-test tests::parse_colour_recognises_yes_no ... ok
 test tests::normalise_less_command_strips_horizontal_flags_when_wrapping ... ok
+test tests::pager_process_spec_appends_file_paths ... ok
+test decoder::tag_lookup::tests::load_dictionary_respects_override_key ... ok
+test decoder::tag_lookup::tests::new_order_single_does_not_inherit_unreachable_group_memberships ... ok
+test tests::parse_colour_recognises_yes_no ... ok
 test tests::parse_colour_rejects_invalid ... ok
 test tests::parse_default_arg_matches_rejects_invalid_shell_quoting ... ok
-test tests::pager_process_spec_appends_file_paths ... ok
+test decoder::tag_lookup::tests::override_uses_fallback_dictionary_for_missing_tags ... ok
+test tests::parse_default_arg_matches_rejects_input_files ... ok
 test tests::parse_delimiter_accepts_hex ... ok
+test decoder::tag_lookup::tests::repeatable_tags_include_nested_groups ... ok
+test tests::parse_default_arg_matches_rejects_version_flag ... ok
 test tests::parse_delimiter_accepts_literal ... ok
+test decoder::tag_lookup::tests::session_default_guides_fixt_messages_without_appl_ver_id ... ok
 test tests::parse_delimiter_rejects_empty ... ok
+test decoder::tag_lookup::tests::warns_and_falls_back_on_unknown_override ... ok
 test tests::parse_output_style_supports_full_and_overrides ... ok
 test tests::parse_output_style_value_rejects_invalid_component ... ok
 test tests::parse_paging_defaults_and_accepts_expected_values ... ok
-test tests::parse_default_arg_matches_rejects_input_files ... ok
-test tests::parse_paging_rejects_empty_and_unknown_values ... ok
-test tests::parse_default_arg_matches_rejects_version_flag ... ok
 test tests::resolve_input_files_defaults_to_stdin ... ok
+test tests::parse_paging_rejects_empty_and_unknown_values ... ok
 test tests::resolve_input_files_preserves_inputs ... ok
 test tests::secret_output_path_inserts_suffix_before_extension ... ok
 test tests::secret_output_path_uses_secret_dir_when_supplied ... ok
 test tests::session_component_helpers_cover_fix50_family ... ok
-test tests::uses_less_pager_detects_less_by_basename ... ok
 test tests::valid_fix_version_passes ... ok
-test tests::validate_cli_options_rejects_secret_dir_without_secret_files ... ok
 test tests::validate_cli_options_rejects_secret_files_without_inputs ... ok
+test tests::validate_cli_options_rejects_secret_dir_without_secret_files ... ok
+test tests::uses_less_pager_detects_less_by_basename ... ok
 test tests::version_str_is_cached ... ok
 test tests::summary_defaults_to_paging_always ... ok
 test tests::version_string_matches_components ... ok
 test tests::pager_writer_reports_non_zero_exit_status ... ok
-test decoder::prettifier::tests::prettify_orders_without_msg_type_header_first ... ok
-test decoder::prettifier::tests::render_message_counts_separates_admin_and_groups_business_messages ... ok
-test tests::ensure_session_components_backfills_missing_fix50_header_and_trailer ... ok
 test tests::summarise_dictionary_counts_header_and_trailer_once ... ok
-test tests::find_message_supports_name_and_msg_type_queries ... ok
-test decoder::prettifier::tests::renders_allocation_instruction_fixture_with_order_groups ... ok
-test tests::load_custom_dictionaries_keeps_last_duplicate_entry ... ok
-test decoder::prettifier::tests::renders_market_data_fixture_with_bid_and_offer_entries ... ok
-test decoder::prettifier::tests::renders_parties_fixture_with_nested_party_sub_ids ... ok
-test decoder::prettifier::tests::renders_prealloc_fixture_with_each_allocation_entry ... ok
-test decoder::prettifier::tests::separators_bracket_source_line_in_wide_grid_mode ... ok
-test decoder::prettifier::tests::validation_inserts_missing_tags ... ok
-test decoder::prettifier::tests::validation_only_outputs_invalid_messages ... ok
 test decoder::prettifier::tests::validation_skips_valid_messages ... ok
 test decoder::prettifier::tests::wide_grid_source_separators_match_widest_fix_line_in_file ... ok
+test tests::load_custom_dictionaries_keeps_last_duplicate_entry ... ok
 
-test result: ok. 272 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.82s
+test result: ok. 273 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.79s
 
-     Running unittests src/bin/generate_sensitive_tags.rs (target/llvm-cov-target/debug/deps/generate_sensitive_tags-5705629e5d543b3f)
+     Running unittests src/bin/generate_sensitive_tags.rs (target/llvm-cov-target/debug/deps/generate_sensitive_tags-82d554d5920ae079)
 
 running 6 tests
 test tests::collect_xml_paths_returns_sorted_xml_files_only ... ok
-test tests::write_output_creates_parent_directory_and_serialises_tags ... ok
 test tests::load_fields_parses_and_deduplicates_by_tag_number ... ok
+test tests::write_output_creates_parent_directory_and_serialises_tags ... ok
 test tests::find_repo_root_walks_up_from_nested_directories ... ok
 test tests::filter_sensitive_selects_expected_field_names ... ok
 test tests::run_generates_sensitive_file_from_repo_resources ... ok
 
-test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
 
-     Running tests/appendix_d.rs (target/llvm-cov-target/debug/deps/appendix_d-c9e61cd6b9699e4a)
+     Running tests/appendix_d.rs (target/llvm-cov-target/debug/deps/appendix_d-64288bb72a934463)
 
 running 1 test
 test generated_appendix_d_corpus_is_present_and_decodes ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.88s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.96s
 
-     Running tests/cli.rs (target/llvm-cov-target/debug/deps/cli-a46d5d5f03de088a)
+     Running tests/cli.rs (target/llvm-cov-target/debug/deps/cli-17fb2035e65403ea)
 
 running 36 tests
-test explicit_version_ignores_invalid_default_args_env ... ok
 test duplicate_fix_flags_are_rejected ... ok
-test default_args_env_rejects_version_flag ... ok
 test explicit_help_ignores_invalid_default_args_env ... ok
+test default_args_env_rejects_version_flag ... ok
+test explicit_version_ignores_invalid_default_args_env ... ok
 test component_detail_verbose_columns_show_fields ... ok
+test fixt_logon_default_appl_ver_applies_to_later_messages ... ok
+test decodes_single_message_from_stdin ... ok
+test default_args_env_applies_cli_flags ... ok
+test component_listing_works_in_plain_and_column_modes ... ok
+test decodes_message_from_file_path ... ok
+test explicit_header_style_renders_source_banner_for_files ... ok
+test explicit_cli_args_override_default_args_env ... ok
+test file_output_starts_with_the_file_name_even_without_header_style ... ok
+test file_decode_prints_separator_before_message_type_summary ... ok
 test message_detail_accepts_msg_type_lookup ... ok
 test missing_message_is_reported ... ok
 test missing_component_is_reported ... ok
-test fixt_logon_default_appl_ver_applies_to_later_messages ... ok
 test secret_files_mode_writes_valid_obfuscated_sibling_file ... ok
-test query_commands_normalise_fix_key_variants ... ok
-test explicit_cli_args_override_default_args_env ... ok
-test file_output_starts_with_the_file_name_even_without_header_style ... ok
-test explicit_header_style_renders_source_banner_for_files ... ok
-test default_args_env_applies_cli_flags ... ok
-test decodes_message_from_file_path ... ok
-test decodes_single_message_from_stdin ... ok
-test invalid_and_missing_tags_are_reported ... ok
-test component_listing_works_in_plain_and_column_modes ... ok
 test message_listing_works_in_plain_and_column_modes ... ok
-test file_decode_prints_separator_before_message_type_summary ... ok
-test nocounts_suppresses_message_type_summary ... ok
-test version_flag_prints_only_version_information ... ok
+test invalid_and_missing_tags_are_reported ... ok
 test number_flag_prefixes_input_lines ... ok
+test nocounts_suppresses_message_type_summary ... ok
+test query_commands_normalise_fix_key_variants ... ok
 test plain_overrides_number_from_default_args_env ... ok
-test tag_detail_verbose_columns_show_enum_values ... ok
-test summary_mode_highlights_invalid_order_messages_and_surfaces_reason ... ok
-test summary_mode_ignores_admin_messages ... ok
-test summary_mode_outputs_order_summary ... ok
 test info_flag_marks_fix27_and_fix30_as_fix40_aliases ... ok
-test summary_mode_orders_events_and_collapses_duplicate_order_flow_messages ... ok
-test summary_nocounts_suppresses_message_type_summary ... ok
-test validation_reports_missing_fields ... ok
-test tag_listing_works_in_plain_and_column_modes ... ok
-test override_is_honoured_with_fallback ... ok
 test info_flag_lists_available_dictionaries_and_highlights_selection ... ok
+test tag_detail_verbose_columns_show_enum_values ... ok
+test summary_mode_ignores_admin_messages ... ok
+test summary_mode_highlights_invalid_order_messages_and_surfaces_reason ... ok
+test version_flag_prints_only_version_information ... ok
+test summary_mode_orders_events_and_collapses_duplicate_order_flow_messages ... ok
+test override_is_honoured_with_fallback ... ok
+test summary_mode_outputs_order_summary ... ok
+test summary_nocounts_suppresses_message_type_summary ... ok
+test tag_listing_works_in_plain_and_column_modes ... ok
+test validation_reports_missing_fields ... ok
 
-test result: ok. 36 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+test result: ok. 36 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.72s
 
-     Running tests/repeating_groups.rs (target/llvm-cov-target/debug/deps/repeating_groups-f74288dffec4fa4a)
+     Running tests/repeating_groups.rs (target/llvm-cov-target/debug/deps/repeating_groups-f1148b1b38128acc)
 
 running 1 test
 test generated_repeating_group_corpus_is_present_and_validation_clean ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s
 
-     Running unittests src/main.rs (target/llvm-cov-target/debug/deps/pcap2fix-d087d7ca4b718aab)
+     Running unittests src/main.rs (target/llvm-cov-target/debug/deps/pcap2fix-56b683c69cc90f25)
 
 running 22 tests
-test tests::find_message_end_rejects_invalid_body_length_and_checksum_fields ... ok
-test tests::flush_complete_messages_resynchronizes_after_leading_garbage ... ok
 test tests::flush_complete_messages_skips_midstream_fragment_before_next_message ... ok
-test tests::open_reader_errors_for_missing_file ... ok
-test tests::flush_complete_messages_retains_partial_begin_string ... ok
-test tests::flush_complete_messages_emits_messages_and_discards_non_fix_tail ... ok
-test tests::ipv6_tcp_payload_is_reassembled ... ok
 test tests::evict_idle_drops_stale_flows ... ok
-test tests::parse_delimiter_variants ... ok
-test tests::parse_delimiter_rejects_invalid_values ... ok
-test tests::append_segment_trims_overlap_and_store_future_segment_prefers_longest ... ok
 test tests::flow_shard_pool_orders_results_by_packet_index ... ok
+test tests::flush_complete_messages_retains_partial_begin_string ... ok
+test tests::append_segment_trims_overlap_and_store_future_segment_prefers_longest ... ok
+test tests::flush_complete_messages_resynchronizes_after_leading_garbage ... ok
+test tests::flush_complete_messages_emits_messages_and_discards_non_fix_tail ... ok
+test tests::find_message_end_rejects_invalid_body_length_and_checksum_fields ... ok
+test tests::flow_shard_exits_when_result_channel_is_closed ... ok
+test tests::flow_shard_evicts_stale_partial_flows_on_idle_command ... ok
+test tests::flush_remaining_flow_outputs_are_sorted_by_flow_key ... ok
 test tests::flushes_full_messages_and_discards_non_fix_tail ... ok
-test tests::retain_partial_begin_string_clears_non_matching_tail ... ok
+test tests::out_of_order_future_segment_is_buffered_until_gap_arrives ... ok
+test tests::open_reader_errors_for_missing_file ... ok
+test tests::parse_delimiter_variants ... ok
+test tests::ipv6_tcp_payload_is_reassembled ... ok
+test tests::parse_delimiter_rejects_invalid_values ... ok
 test tests::reassembly_overflow_clears_flow_state ... ok
 test tests::reassembly_appends_in_order ... ok
+test tests::retain_partial_begin_string_clears_non_matching_tail ... ok
 test tests::retransmit_is_ignored ... ok
-test tests::flush_remaining_flow_outputs_are_sorted_by_flow_key ... ok
-test tests::out_of_order_future_segment_is_buffered_until_gap_arrives ... ok
-test tests::flow_shard_exits_when_result_channel_is_closed ... ok
 test tests::sweep_idle_flows_dispatches_at_most_once_per_interval ... ok
-test tests::flow_shard_evicts_stale_partial_flows_on_idle_command ... ok
 
 test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running tests/roundtrip.rs (target/llvm-cov-target/debug/deps/roundtrip-b6eb6e104d3bd4cd)
+     Running tests/roundtrip.rs (target/llvm-cov-target/debug/deps/roundtrip-83ebaed19055964f)
 
 running 1 test
 test pcap_roundtrip_matches_expected_output ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.32s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s
 
 
     Finished report saved to target/coverage/coverage.xml
-normalised Cobertura report: removed 1 classes and 0 line entries
-warning: fixdecoder@0.3.0: Building fixdecoder v0.3.0 (branch:main, commit:82497ba) [rust:1.94.1]
-    Finished `release` profile [optimized] target(s) in 0.06s
+normalised Cobertura report: removed 0 classes and 0 line entries
+   Compiling libc v0.2.186
+   Compiling proc-macro2 v1.0.103
+   Compiling serde_core v1.0.228
+   Compiling quote v1.0.42
+   Compiling unicode-ident v1.0.22
+   Compiling memchr v2.7.6
+   Compiling bitflags v2.10.0
+   Compiling winnow v1.0.2
+   Compiling cfg-if v1.0.4
+   Compiling version_check v0.9.5
+   Compiling crossbeam-utils v0.8.21
+   Compiling objc2 v0.6.3
+   Compiling utf8parse v0.2.2
+   Compiling toml_parser v1.1.2+spec-1.1.0
+   Compiling anstyle-parse v0.2.7
+   Compiling objc2-encode v4.1.0
+   Compiling colorchoice v1.0.4
+   Compiling anstyle v1.0.13
+   Compiling parking_lot_core v0.9.12
+   Compiling rustix v1.1.2
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling cfg_aliases v0.2.1
+   Compiling anstyle-query v1.1.5
+   Compiling signal-hook v0.3.18
+   Compiling autocfg v1.5.0
+   Compiling num-traits v0.2.19
+   Compiling anstream v0.6.21
+   Compiling nix v0.30.1
+   Compiling anyhow v1.0.100
+   Compiling strsim v0.11.1
+   Compiling crossbeam-epoch v0.9.18
+   Compiling heck v0.5.0
+   Compiling getrandom v0.3.4
+   Compiling toml_datetime v1.1.1+spec-1.1.0
+   Compiling errno v0.3.14
+   Compiling serde_spanned v1.1.1
+   Compiling signal-hook-registry v1.4.8
+   Compiling toml v1.1.2+spec-1.1.0
+   Compiling clap_lex v0.7.6
+   Compiling semver v1.0.27
+   Compiling serde v1.0.228
+   Compiling rayon-core v1.13.0
+   Compiling syn v2.0.111
+   Compiling log v0.4.29
+   Compiling scopeguard v1.2.0
+   Compiling rustix v0.38.44
+   Compiling smallvec v1.15.1
+   Compiling winresource v0.1.31
+   Compiling mio v1.2.0
+   Compiling lock_api v0.4.14
+   Compiling block2 v0.6.2
+   Compiling rustc_version v0.4.1
+   Compiling clap_builder v4.5.53
+   Compiling crossbeam-deque v0.8.6
+   Compiling aho-corasick v1.1.4
+   Compiling core-foundation-sys v0.8.7
+   Compiling minimal-lexical v0.2.1
+   Compiling regex-syntax v0.8.8
+   Compiling nom v7.1.3
+   Compiling iana-time-zone v0.1.64
+   Compiling fixdecoder v0.3.0 (.)
+   Compiling clap_derive v4.5.49
+   Compiling serde_derive v1.0.228
+   Compiling regex-automata v0.4.13
+   Compiling dispatch2 v0.3.0
+   Compiling signal-hook-mio v0.2.5
+   Compiling parking_lot v0.12.5
+   Compiling thiserror v1.0.69
+   Compiling fastrand v2.3.0
+   Compiling either v1.15.0
+   Compiling once_cell v1.21.3
+   Compiling rayon v1.11.0
+   Compiling clap v4.5.53
+   Compiling tempfile v3.23.0
+   Compiling crossterm v0.28.1
+   Compiling ctrlc v3.5.1
+   Compiling rusticata-macros v4.1.0
+   Compiling chrono v0.4.42
+   Compiling thiserror-impl v1.0.69
+   Compiling terminal_size v0.4.3
+   Compiling pcap2fix v0.1.0 (pcap2fix)
+warning: fixdecoder@0.3.0: Building fixdecoder v0.3.0 (branch:main, commit:f4ba8ce) [rust:1.96.0]
+   Compiling roxmltree v0.21.1
+   Compiling regex v1.12.2
+   Compiling quick-xml v0.36.2
+   Compiling shlex v1.3.0
+   Compiling arrayvec v0.7.6
+   Compiling circular v0.3.0
+   Compiling etherparse v0.15.0
+   Compiling pcap-parser v0.14.1
+    Finished `release` profile [optimized] target(s) in 14.78s
+make[1]: Leaving directory '.'
 ```
 
 Build only the optimized release binaries.
@@ -1195,7 +1284,7 @@ Run it (from the optimized build) and check the version details:
 
 ```bash
 ❯ ./target/release/fixdecoder --version
-fixdecoder 0.3.0 (branch:main, commit:82497ba) [rust:1.94.1]
+fixdecoder 0.3.0 (branch:main, commit:f4ba8ce) [rust:1.96.0]
 ```
 
 <!-- regen-readme:end --section=build-examples -->
