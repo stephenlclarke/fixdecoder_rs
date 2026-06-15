@@ -268,6 +268,21 @@ mod tests {
         }
     }
 
+    fn plain_palette() -> ColourPalette {
+        ColourPalette {
+            reset: "",
+            line: "",
+            tag: "",
+            name: "",
+            value: "",
+            enumeration: "",
+            file: "",
+            error: "",
+            message: "",
+            title: "",
+        }
+    }
+
     fn sample_field_node(required: bool) -> FieldNode {
         use std::sync::Arc;
         let field = Field {
@@ -475,10 +490,26 @@ mod tests {
     fn print_enum_outputs_coloured_enum() {
         let value = sample_value("B", "Beta");
         let mut out = Vec::new();
-        print_enum(&mut out, &value, 0, palette()).unwrap();
+        print_enum(&mut out, &value, 0, 1, palette()).unwrap();
         let s = String::from_utf8(out).unwrap();
         assert!(s.contains("B"));
         assert!(s.contains("Beta"));
+    }
+
+    #[test]
+    fn print_enum_aligns_to_dynamic_width() {
+        let short = sample_value("A", "Alpha");
+        let long = sample_value("LONG", "LongCode");
+        let mut out = Vec::new();
+        let colours = plain_palette();
+
+        print_enum(&mut out, &short, 2, 4, colours).unwrap();
+        print_enum(&mut out, &long, 2, 4, colours).unwrap();
+
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "         A : Alpha\n      LONG : LongCode\n"
+        );
     }
 
     #[test]
@@ -504,7 +535,7 @@ mod tests {
         let values = [sample_value("LONG", "desc"), sample_value("S", "short")];
         let refs: Vec<&Value> = values.iter().collect();
         let layout = compute_values_layout(&refs, 4).expect("layout expected");
-        assert!(layout.column_width >= "LONG: desc".len());
+        assert!(layout.column_width >= "LONG : desc".len());
         assert!(layout.columns >= 1);
     }
 
@@ -851,19 +882,29 @@ fn print_enum(
     out: &mut dyn Write,
     value: &Value,
     indent_level: usize,
+    enum_width: usize,
     colours: ColourPalette,
 ) -> io::Result<()> {
     writeln!(
         out,
-        "{}{}{}{} : {}{}{}",
+        "{}{}{:>width$}{} : {}{}{}",
         indent(indent_level + 4),
         colours.value,
         value.enumeration,
         colours.reset,
         colours.enumeration,
         value.description,
-        colours.reset
+        colours.reset,
+        width = enum_width
     )
+}
+
+fn enum_value_width(values: &[&Value]) -> usize {
+    values
+        .iter()
+        .map(|value| value.enumeration.len())
+        .max()
+        .unwrap_or(1)
 }
 
 fn print_enum_columns(
@@ -880,7 +921,8 @@ fn print_enum_columns(
     let mut sorted = values.to_vec();
     sorted.sort_by(|a, b| a.enumeration.cmp(&b.enumeration));
 
-    let layout_params = determine_enum_layout(indent_level, layout, &sorted);
+    let enum_width = enum_value_width(&sorted);
+    let layout_params = determine_enum_layout(indent_level, layout, &sorted, enum_width);
     let rows = sorted.len().div_ceil(layout_params.cols);
 
     for row in 0..rows {
@@ -894,9 +936,9 @@ fn print_enum_columns(
                 colours,
                 indent_level,
                 sorted[idx],
+                enum_width,
                 col,
-                layout_params.col_width,
-                layout_params.extra_pad,
+                layout_params,
             )?;
         }
         writeln!(out)?;
@@ -915,6 +957,7 @@ fn determine_enum_layout(
     indent_level: usize,
     layout: Option<ColumnLayout>,
     values: &[&Value],
+    enum_width: usize,
 ) -> EnumLayout {
     if let Some(layout) = layout {
         return EnumLayout {
@@ -926,7 +969,7 @@ fn determine_enum_layout(
 
     let max_len = values
         .iter()
-        .map(|v| v.enumeration.len() + 2 + v.description.len())
+        .map(|v| enum_width + 3 + v.description.len())
         .max()
         .unwrap_or(0);
     let usable_width = terminal_width().saturating_sub(indent_level);
@@ -944,30 +987,33 @@ fn write_enum_cell(
     colours: ColourPalette,
     indent_level: usize,
     value: &Value,
+    enum_width: usize,
     col: usize,
-    col_width: usize,
-    extra_pad: usize,
+    layout: EnumLayout,
 ) -> io::Result<()> {
-    let plain_width = value.enumeration.len() + 2 + value.description.len();
+    let plain_width = enum_width + 3 + value.description.len();
     let (visible, width) = if col == 0 {
-        let indent_adjust = indent_level + extra_pad;
-        (plain_width + indent_adjust, col_width + indent_adjust)
+        let indent_adjust = indent_level + layout.extra_pad;
+        (
+            plain_width + indent_adjust,
+            layout.col_width + indent_adjust,
+        )
     } else {
-        (plain_width, col_width)
+        (plain_width, layout.col_width)
     };
 
     write_with_padding(out, visible, width, |inner| {
         if col == 0 {
             write!(inner, "{}", indent(indent_level))?;
-            if extra_pad > 0 {
-                write!(inner, "{:pad$}", "", pad = extra_pad)?;
+            if layout.extra_pad > 0 {
+                write!(inner, "{:pad$}", "", pad = layout.extra_pad)?;
             }
         }
         write!(
             inner,
-            "{}{}{}: {}{}{}",
+            "{}{}{} : {}{}{}",
             colours.value,
-            value.enumeration,
+            format_args!("{:>width$}", value.enumeration, width = enum_width),
             colours.reset,
             colours.enumeration,
             value.description,
@@ -1352,8 +1398,10 @@ impl<'a, 'b, W: Write> RenderContext<'a, 'b, W> {
             let values = collect_sorted_values(&mut self.enum_buf, field.field.values_iter());
             print_enum_columns(self.out, values, indent_level, colours, style.layout())?;
         } else {
-            for value in field.field.values_iter() {
-                print_enum(self.out, value, indent_level, colours)?;
+            let values = collect_sorted_values(&mut self.enum_buf, field.field.values_iter());
+            let enum_width = enum_value_width(values);
+            for value in values {
+                print_enum(self.out, value, indent_level, enum_width, colours)?;
             }
         }
         Ok(())
@@ -1552,11 +1600,14 @@ fn print_tag_details_with_writer(
         if columns {
             let mut buf = Vec::new();
             let values = collect_sorted_values(&mut buf, field.values_iter());
-            let layout = compute_values_layout(values, 4);
-            print_enum_columns(out, values, 4, colours, layout)?;
+            let layout = compute_values_layout(values, 2);
+            print_enum_columns(out, values, 2, colours, layout)?;
         } else {
-            for value in field.values_iter() {
-                print_enum(out, value, 4, colours)?;
+            let mut buf = Vec::new();
+            let values = collect_sorted_values(&mut buf, field.values_iter());
+            let enum_width = enum_value_width(values);
+            for value in values {
+                print_enum(out, value, 2, enum_width, colours)?;
             }
         }
     }
@@ -1652,9 +1703,10 @@ fn compute_values_layout(values: &[&Value], indent_level: usize) -> Option<Colum
         return None;
     }
     let mut stats = LayoutStats::default();
+    let enum_width = enum_value_width(values);
     let max_entry = values
         .iter()
-        .map(|v| v.enumeration.len() + 2 + v.description.len())
+        .map(|v| enum_width + 3 + v.description.len())
         .max()
         .unwrap_or(0);
     stats.record(max_entry, indent_level);
@@ -1702,10 +1754,11 @@ fn collect_container_layout(
 }
 
 fn field_layout_width(field: &FieldNode) -> usize {
-    field
-        .field
-        .values_iter()
-        .map(|value| value.enumeration.len() + 2 + value.description.len())
+    let values: Vec<&Value> = field.field.values_iter().collect();
+    let enum_width = enum_value_width(&values);
+    values
+        .iter()
+        .map(|value| enum_width + 3 + value.description.len())
         .max()
         .unwrap_or(0)
 }
