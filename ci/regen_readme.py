@@ -400,8 +400,8 @@ def build_readme_examples(capabilities: CapabilitySnapshot) -> tuple[ReadmeExamp
         "--summary",
         ReadmeExample(
             option="--summary",
-            display_command="printf '<order FIX log>' | fixdecoder --fix=44 --summary --nocounts --paging=never --colour=no",
-            args=("--fix=44", "--summary", *quiet_args, "--paging=never", *colour_args),
+            display_command="printf '<order FIX log>' | fixdecoder --fix=44 --summary --nocounts --paging=no --colour=no",
+            args=("--fix=44", "--summary", *quiet_args, "--paging=no", *colour_args),
             stdin=ORDER_FIX + EXEC_FIX,
             max_lines=28,
         ),
@@ -690,7 +690,7 @@ def format_example_block(example: ReadmeExample, output: str) -> str:
 def update_build_examples(markdown: str) -> str:
     block = render_build_examples()
     if BUILD_BLOCK_RE.search(markdown):
-        return BUILD_BLOCK_RE.sub(block, markdown)
+        return BUILD_BLOCK_RE.sub(lambda _: block, markdown)
 
     build_heading = markdown.index("# Build it")
     pcap_heading = markdown.index("\n# PCAP to FIX filter", build_heading)
@@ -701,7 +701,7 @@ def update_build_examples(markdown: str) -> str:
 def update_usage_section(markdown: str, capabilities: CapabilitySnapshot) -> str:
     block = format_usage_block(capabilities)
     if USAGE_BLOCK_RE.search(markdown):
-        return USAGE_BLOCK_RE.sub(block, markdown)
+        return USAGE_BLOCK_RE.sub(lambda _: block, markdown)
 
     insertion = markdown.index("## Key options at a glance")
     return f"{markdown[:insertion]}{block}{markdown[insertion:]}"
@@ -710,7 +710,7 @@ def update_usage_section(markdown: str, capabilities: CapabilitySnapshot) -> str
 def update_capability_section(markdown: str, capabilities: CapabilitySnapshot) -> str:
     block = format_capability_block(capabilities)
     if CAPABILITY_BLOCK_RE.search(markdown):
-        return CAPABILITY_BLOCK_RE.sub(block, markdown)
+        return CAPABILITY_BLOCK_RE.sub(lambda _: block, markdown)
 
     insertion = markdown.index("## Key options at a glance")
     return f"{markdown[:insertion]}{block}{markdown[insertion:]}"

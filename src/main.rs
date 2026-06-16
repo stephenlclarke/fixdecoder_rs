@@ -65,9 +65,9 @@ const CLI_USAGE: &str = "\
 fixdecoder [--xml <FILE>]... [--fix <VER>] [--info] [--message [<MSG>]]
            [--component [<NAME>]] [--tag [<TAG>]] [--column] [--verbose]
            [--header] [--trailer] [--colour [<yes|no|auto>]] [--delimiter <CHAR>]
-           [--style <STYLE>] [--plain] [--number] [--paging <WHEN>] [--pager <CMD>]
+           [--style <STYLE>] [--plain] [--number] [--paging <yes|no|auto>] [--pager <CMD>]
            [--nowrap] [--follow] [--validate] [--secret] [--secret-files]
-           [--summary] [--nocounts] [--secret-dir <DIR>] [--help] [--version] [FILE]...";
+           [--summary] [--nocounts] [--secret-dir <DIR>] [-h|--help] [-v|--version] [FILE]...";
 const ORDER_XML: usize = 10;
 const ORDER_FIX: usize = 20;
 const ORDER_INFO: usize = 30;
@@ -1161,9 +1161,9 @@ fn build_cli() -> Command {
             .num_args(0..=1)
             .value_name("yes|no|auto")
             .require_equals(false)
-            .default_missing_value("true")
+            .default_missing_value("yes")
             .display_order(ORDER_COLOUR)
-            .help("Force coloured output"),
+            .help("Colour mode: yes, no, or auto"),
     )
     .arg(
         Arg::new("secret-dir")
@@ -1206,9 +1206,9 @@ fn build_cli() -> Command {
     .arg(
         Arg::new("paging")
             .long("paging")
-            .value_name("WHEN")
+            .value_name("yes|no|auto")
             .display_order(ORDER_PAGING)
-            .help("Pager mode: auto, never, or always"),
+            .help("Pager mode: yes, no, or auto"),
     )
     .arg(
         Arg::new("pager")
@@ -1238,11 +1238,12 @@ fn build_cli() -> Command {
             .short('h')
             .action(ArgAction::Help)
             .display_order(ORDER_HELP)
-            .help("Print help"),
+            .help("Show this help message and exit"),
     )
     .arg(
         Arg::new("version")
             .long("version")
+            .short('v')
             .action(ArgAction::SetTrue)
             .display_order(ORDER_VERSION)
             .help("Print version information and exit"),
@@ -1473,8 +1474,8 @@ fn parse_colour(value: Option<&String>) -> Result<Option<bool>> {
         None => Ok(None),
         Some(v) if v.is_empty() => Ok(None),
         Some(v) => match v.to_ascii_lowercase().as_str() {
-            "true" | "yes" | "always" => Ok(Some(true)),
-            "false" | "no" | "never" => Ok(Some(false)),
+            "yes" => Ok(Some(true)),
+            "no" => Ok(Some(false)),
             "auto" => Ok(None),
             other => {
                 print_usage();
@@ -1493,8 +1494,8 @@ fn parse_paging(value: Option<&String>) -> Result<PagingMode> {
         }
         Some(v) => match v.as_str() {
             "auto" => Ok(PagingMode::Auto),
-            "never" => Ok(PagingMode::Never),
-            "always" => Ok(PagingMode::Always),
+            "no" => Ok(PagingMode::Never),
+            "yes" => Ok(PagingMode::Always),
             other => {
                 print_usage();
                 Err(anyhow!("invalid value for --paging: {other}"))
@@ -2317,14 +2318,6 @@ mod tests {
         assert_eq!(parse_colour(Some(&"yes".to_string())).unwrap(), Some(true));
         assert_eq!(parse_colour(Some(&"No".to_string())).unwrap(), Some(false));
         assert_eq!(parse_colour(Some(&"auto".to_string())).unwrap(), None);
-        assert_eq!(
-            parse_colour(Some(&"always".to_string())).unwrap(),
-            Some(true)
-        );
-        assert_eq!(
-            parse_colour(Some(&"never".to_string())).unwrap(),
-            Some(false)
-        );
         assert!(parse_colour(None).unwrap().is_none());
     }
 
@@ -2332,6 +2325,8 @@ mod tests {
     fn parse_colour_rejects_invalid() {
         let err = parse_colour(Some(&"maybe".to_string())).unwrap_err();
         assert!(err.to_string().contains("invalid value"));
+        assert!(parse_colour(Some(&"always".to_string())).is_err());
+        assert!(parse_colour(Some(&"never".to_string())).is_err());
     }
 
     #[test]
@@ -2350,17 +2345,17 @@ mod tests {
     fn parse_paging_defaults_and_accepts_expected_values() {
         assert_eq!(parse_paging(None).unwrap(), PagingMode::Auto);
         assert_eq!(
-            parse_paging(Some(&"always".to_string())).unwrap(),
+            parse_paging(Some(&"yes".to_string())).unwrap(),
             PagingMode::Always
         );
         assert_eq!(
-            parse_paging(Some(&"never".to_string())).unwrap(),
+            parse_paging(Some(&"no".to_string())).unwrap(),
             PagingMode::Never
         );
     }
 
     #[test]
-    fn summary_defaults_to_paging_always() {
+    fn summary_defaults_to_enabled_paging() {
         let matches = build_cli()
             .try_get_matches_from(["fixdecoder", "--summary"])
             .expect("parse summary");
@@ -2371,7 +2366,7 @@ mod tests {
     #[test]
     fn explicit_paging_overrides_summary_default() {
         let matches = build_cli()
-            .try_get_matches_from(["fixdecoder", "--summary", "--paging=never"])
+            .try_get_matches_from(["fixdecoder", "--summary", "--paging=no"])
             .expect("parse summary paging");
         let opts = CliOptions::from_matches(&matches, None).expect("build opts");
         assert_eq!(opts.paging, PagingMode::Never);
@@ -2488,7 +2483,7 @@ mod tests {
     fn uses_less_pager_detects_less_by_basename() {
         assert!(uses_less_pager("less -R"));
         assert!(uses_less_pager("/usr/bin/less -R"));
-        assert!(!uses_less_pager("bat --paging=always"));
+        assert!(!uses_less_pager("bat --style=plain"));
     }
 
     #[test]
@@ -2661,7 +2656,7 @@ mod tests {
             .try_get_matches_from([
                 "fixdecoder",
                 "--style=header,grid",
-                "--paging=always",
+                "--paging=yes",
                 "--pager=less -RX",
                 "--nowrap",
                 "-n",
@@ -2673,7 +2668,7 @@ mod tests {
         );
         assert_eq!(
             matches.get_one::<String>("paging").map(String::as_str),
-            Some("always")
+            Some("yes")
         );
         assert_eq!(
             matches.get_one::<String>("pager").map(String::as_str),
@@ -2786,6 +2781,8 @@ mod tests {
     fn parse_paging_rejects_empty_and_unknown_values() {
         assert!(parse_paging(Some(&"".to_string())).is_err());
         assert!(parse_paging(Some(&"sometimes".to_string())).is_err());
+        assert!(parse_paging(Some(&"always".to_string())).is_err());
+        assert!(parse_paging(Some(&"never".to_string())).is_err());
     }
 
     #[test]

@@ -263,7 +263,7 @@ fn summary_nocounts_suppresses_message_type_summary() {
     write!(file, "{msg}").expect("write temp");
 
     let assert = cargo_bin_cmd!("fixdecoder")
-        .args(["--fix=44", "--summary", "--paging=never", "--nocounts"])
+        .args(["--fix=44", "--summary", "--paging=no", "--nocounts"])
         .arg(file.path())
         .assert()
         .success();
@@ -551,19 +551,18 @@ fn override_is_honoured_with_fallback() {
 
 #[test]
 fn version_flag_prints_only_version_information() {
-    let assert = cargo_bin_cmd!("fixdecoder")
-        .arg("--version")
-        .assert()
-        .success();
-    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
-    assert!(
-        stdout.starts_with("fixdecoder "),
-        "version output should begin with the version banner: {stdout}"
-    );
-    assert!(
-        !stdout.contains("BeginString"),
-        "version output should not decode messages: {stdout}"
-    );
+    for flag in ["--version", "-v"] {
+        let assert = cargo_bin_cmd!("fixdecoder").arg(flag).assert().success();
+        let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+        assert!(
+            stdout.starts_with("fixdecoder "),
+            "{flag} output should begin with the version banner: {stdout}"
+        );
+        assert!(
+            !stdout.contains("BeginString"),
+            "{flag} output should not decode messages: {stdout}"
+        );
+    }
 }
 
 #[test]

@@ -150,7 +150,7 @@ fn render(stdout: &mut io::Stdout, model: &PagerModel, state: &mut PagerState) -
             stdout,
             MoveTo(0, 0),
             Print(format!(
-                "{}Terminal too small for split summary pager. Resize or use --paging=never.{}",
+                "{}Terminal too small for split summary pager. Resize or use --paging=no.{}",
                 colours.error, colours.reset
             ))
         )?;
@@ -165,7 +165,7 @@ fn render(stdout: &mut io::Stdout, model: &PagerModel, state: &mut PagerState) -
             stdout,
             MoveTo(0, 0),
             Print(format!(
-                "{}Terminal too small for split summary pager. Resize or use --paging=never.{}",
+                "{}Terminal too small for split summary pager. Resize or use --paging=no.{}",
                 colours.error, colours.reset
             ))
         )?;
