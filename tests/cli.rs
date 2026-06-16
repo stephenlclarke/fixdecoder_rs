@@ -615,7 +615,7 @@ fn explicit_help_ignores_invalid_default_args_env() {
         .arg("--help")
         .assert()
         .success()
-        .stdout(contains("Usage: fixdecoder"));
+        .stdout(contains("Usage: fixdecoder").and(contains("Command line option examples:")));
 }
 
 #[test]

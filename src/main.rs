@@ -398,9 +398,10 @@ fn parse_cli_options() -> Result<Option<CliOptions>> {
         Ok(m) => m,
         Err(err) => match err.kind() {
             ErrorKind::DisplayHelp | ErrorKind::DisplayVersion => {
-                err.print()?;
                 if err.kind() == ErrorKind::DisplayHelp {
                     print_usage();
+                } else {
+                    err.print()?;
                 }
                 return Ok(None);
             }
@@ -1762,7 +1763,7 @@ fn print_git_clone() {
 /// whenever argument parsing fails.
 fn print_usage() {
     static USAGE: &str = include_str!("../resources/messages/usage_en.txt");
-    println!("\n{USAGE}");
+    println!("{USAGE}");
 }
 
 /// Normalise user-supplied FIX version identifiers (e.g. `4.4`, `fix44`)

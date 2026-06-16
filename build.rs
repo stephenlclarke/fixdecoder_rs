@@ -7,6 +7,10 @@ use std::process::Command;
 // can report it in --version even outside CI.
 fn main() {
     println!("cargo:rerun-if-changed=resources/icons/marvin.ico");
+    println!("cargo:rerun-if-env-changed=FIXDECODER_BRANCH");
+    println!("cargo:rerun-if-env-changed=FIXDECODER_COMMIT");
+    println!("cargo:rerun-if-env-changed=FIXDECODER_VERSION");
+    emit_git_rerun_directives();
 
     let rustc = rustc_version::version()
         .map(|v| v.to_string())
@@ -45,6 +49,22 @@ fn main() {
     );
 
     embed_windows_icon("resources/icons/marvin.ico");
+}
+
+fn emit_git_rerun_directives() {
+    if let Some(head_path) = git_output(&["rev-parse", "--git-path", "HEAD"]) {
+        println!("cargo:rerun-if-changed={head_path}");
+    }
+
+    if let Some(ref_name) = git_output(&["symbolic-ref", "-q", "HEAD"])
+        && let Some(ref_path) = git_output(&["rev-parse", "--git-path", &ref_name])
+    {
+        println!("cargo:rerun-if-changed={ref_path}");
+    }
+
+    if let Some(packed_refs_path) = git_output(&["rev-parse", "--git-path", "packed-refs"]) {
+        println!("cargo:rerun-if-changed={packed_refs_path}");
+    }
 }
 
 fn git_output(args: &[&str]) -> Option<String> {
