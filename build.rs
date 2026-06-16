@@ -19,14 +19,18 @@ fn main() {
 
     // Version/tag: prefer FIXDECODER_VERSION env, else git describe, else Cargo pkg version.
     let cargo_ver = env!("CARGO_PKG_VERSION").to_string();
-    let version = std::env::var("FIXDECODER_VERSION")
+    let mut version = std::env::var("FIXDECODER_VERSION")
         .ok()
         .filter(|v| !v.is_empty())
         .filter(|v| {
             let stripped = v.trim_start_matches('v');
-            stripped == cargo_ver
+            stripped.strip_suffix("-dirty").unwrap_or(stripped) == cargo_ver
         })
-        .unwrap_or_else(|| cargo_ver.clone());
+        .map(|v| ensure_version_prefix(&v))
+        .unwrap_or_else(|| format!("v{cargo_ver}"));
+    if git_dirty() && !version.ends_with("-dirty") {
+        version.push_str("-dirty");
+    }
     println!("cargo:rustc-env=FIXDECODER_VERSION={version}");
 
     let commit = std::env::var("FIXDECODER_COMMIT")
@@ -80,6 +84,18 @@ fn git_output(args: &[&str]) -> Option<String> {
                 None
             }
         })
+}
+
+fn git_dirty() -> bool {
+    git_output(&["status", "--porcelain"]).is_some()
+}
+
+fn ensure_version_prefix(version: &str) -> String {
+    if version.starts_with('v') {
+        version.to_string()
+    } else {
+        format!("v{version}")
+    }
 }
 
 fn embed_windows_icon(icon_path: &str) {

@@ -237,6 +237,9 @@ function ensure_build_metadata() {
       version="v${crate_ver}"
     fi
   fi
+  if [[ -n "$(git status --porcelain 2>/dev/null || true)" && "${version}" != *-dirty ]]; then
+    version="${version}-dirty"
+  fi
 
   export FIXDECODER_BRANCH="${branch}"
   export FIXDECODER_COMMIT="${commit}"

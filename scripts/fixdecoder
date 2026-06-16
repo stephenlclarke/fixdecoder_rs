@@ -30,9 +30,10 @@ function error() {
   exit 1
 }
 
-# Resolve the Rust binary to execute, preferring release builds.
+# Resolve the Rust binary to execute, choosing the newest local build.
 function resolve_binary() {
-  local candidate
+  local debug
+  local release
 
   if [[ -n "${FIXDECODER_BIN:-}" ]]; then
     [[ -x "$FIXDECODER_BIN" ]] || error "FIXDECODER_BIN is not executable: ${FIXDECODER_BIN}"
@@ -40,12 +41,27 @@ function resolve_binary() {
     return
   fi
 
-  for candidate in "${TARGET_DIR}/release/fixdecoder" "${TARGET_DIR}/debug/fixdecoder"; do
-    if [[ -x "$candidate" ]]; then
-      printf '%s\n' "$candidate"
-      return
+  release="${TARGET_DIR}/release/fixdecoder"
+  debug="${TARGET_DIR}/debug/fixdecoder"
+
+  if [[ -x "$release" && -x "$debug" ]]; then
+    if [[ "$debug" -nt "$release" ]]; then
+      printf '%s\n' "$debug"
+    else
+      printf '%s\n' "$release"
     fi
-  done
+    return
+  fi
+
+  if [[ -x "$release" ]]; then
+    printf '%s\n' "$release"
+    return
+  fi
+
+  if [[ -x "$debug" ]]; then
+    printf '%s\n' "$debug"
+    return
+  fi
 
   error "fixdecoder binary not found; set FIXDECODER_BIN or run make build"
 }

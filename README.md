@@ -66,7 +66,7 @@ cat fixlog.txt | scripts/fixdecoder --validate --summary
 
 You can run fixdecoder anywhere you can run a Rust binary — no extra OS dependencies or runtime services are required. It ships with a full set of embedded FIX dictionaries. The sections below cover the key options for selecting and browsing dictionaries, controlling output/formatting, and adjusting processing modes.
 
-From a source checkout, `scripts/fixdecoder` runs the local build artifact, preferring `target/release/fixdecoder` and falling back to `target/debug/fixdecoder`; set `FIXDECODER_BIN=/path/to/fixdecoder` to override discovery.
+From a source checkout, `scripts/fixdecoder` runs the newest local build artifact from `target/release/fixdecoder` or `target/debug/fixdecoder`; set `FIXDECODER_BIN=/path/to/fixdecoder` to override discovery.
 
 The decoder now also exposes bat-style presentation controls for terminal use. You can add line numbers with `--number`, switch decorations with `--style=plain|numbers|header|grid|full`, disable decoration with `--plain`, and control paging with `--paging=yes|no|auto`, `--pager=<CMD>`, and `--nowrap`.
 
