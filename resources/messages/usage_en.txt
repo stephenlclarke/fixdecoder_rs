@@ -4,26 +4,26 @@ Command line option examples:
 
     Query FIX dictionary contents by FIX Message Name or MsgType:
 
-      fixdecoder [[--fix=44] [--xml=FILE --xml=FILE2 ...]] [--message[=NAME|MSGTYPE] [--verbose] [--column] [--header] [--trailer]]
+      fixdecoder [[--xml=FILE --xml=FILE2 ...] [--fix=44]] [--message[=NAME|MSGTYPE] [--column] [--verbose] [--header] [--trailer]]
 
       $ fixdecoder --message=NewOrderSingle --verbose --column --header --trailer
       $ fixdecoder --message=D --verbose --column --header --trailer
 
     Query FIX dictionary contents by FIX Tag number:
 
-      fixdecoder [[--fix=44] [--xml=FILE --xml=FILE2 ...]] [--tag[=TAG] [--verbose] [--column]]
+      fixdecoder [[--xml=FILE --xml=FILE2 ...] [--fix=44]] [--tag[=TAG] [--column] [--verbose]]
 
       $ fixdecoder --tag=44 --verbose --column
 
     Query FIX dictionary contents by FIX Component Name:
 
-      fixdecoder [[--fix=44] [--xml=FILE --xml=FILE2 ...]] [--component[=NAME] [--verbose] [--column]]
+      fixdecoder [[--xml=FILE --xml=FILE2 ...] [--fix=44]] [--component[=NAME] [--column] [--verbose]]
 
       $ fixdecoder --component=Instrument --verbose --column
 
   Show summary information about available FIX dictionaries:
 
-    fixdecoder [[--fix=44] [--xml=FILE --xml=FILE2 ...]] [--info]
+    fixdecoder [[--xml=FILE --xml=FILE2 ...] [--fix=44]] [--info]
 
     $ fixdecoder --info
 
@@ -33,11 +33,14 @@ Command line option examples:
   by default but can be forced on with --colour=yes or --color=always.
   Shell-style default options may also be supplied through FIXDECODER_DEFAULT_ARGS:
 
-    fixdecoder [--xml=FILE --xml=FILE2 ...] [--validate]
-               [--colour=yes|no|auto] [--style=STYLE] [--plain]
-               [--number] [--paging=auto|never|always] [--pager=CMD]
-               [--nowrap] [--nocounts] [--secret] [--summary] [--follow]
-               [--fix=VER] [--delimiter=CHAR] [file1.log file2.log ...]
+    fixdecoder [--xml=FILE --xml=FILE2 ...] [--fix=VER]
+               [--column] [--verbose] [--header] [--trailer]
+               [--colour=yes|no|auto] [--delimiter=CHAR]
+               [--style=STYLE] [--plain] [--number]
+               [--paging=auto|never|always] [--pager=CMD] [--nowrap]
+               [--follow] [--validate] [--secret] [--secret-files]
+               [--summary] [--nocounts] [--secret-dir=DIR]
+               [file1.log file2.log ...]
 
     Validate and Obfuscate a FIX logfile.
 

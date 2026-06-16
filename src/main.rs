@@ -61,6 +61,34 @@ const VERSION: &str = match option_env!("FIXDECODER_VERSION") {
 
 /// Shell-style default arguments applied ahead of the real CLI.
 const DEFAULT_ARGS_ENV: &str = "FIXDECODER_DEFAULT_ARGS";
+const CLI_USAGE: &str = "fixdecoder [--xml <FILE>]... [--fix <VER>] [--info] [--message [<MSG>]] [--component [<NAME>]] [--tag [<TAG>]] [--column] [--verbose] [--header] [--trailer] [--colour [<yes|no|auto>]] [--delimiter <CHAR>] [--style <STYLE>] [--plain] [--number] [--paging <WHEN>] [--pager <CMD>] [--nowrap] [--follow] [--validate] [--secret] [--secret-files] [--summary] [--nocounts] [--secret-dir <DIR>] [--help] [--version] [FILE]...";
+const ORDER_XML: usize = 10;
+const ORDER_FIX: usize = 20;
+const ORDER_INFO: usize = 30;
+const ORDER_MESSAGE: usize = 40;
+const ORDER_COMPONENT: usize = 50;
+const ORDER_TAG: usize = 60;
+const ORDER_COLUMN: usize = 70;
+const ORDER_VERBOSE: usize = 80;
+const ORDER_HEADER: usize = 90;
+const ORDER_TRAILER: usize = 100;
+const ORDER_COLOUR: usize = 110;
+const ORDER_DELIMITER: usize = 120;
+const ORDER_STYLE: usize = 130;
+const ORDER_PLAIN: usize = 140;
+const ORDER_NUMBER: usize = 150;
+const ORDER_PAGING: usize = 160;
+const ORDER_PAGER: usize = 170;
+const ORDER_NOWRAP: usize = 180;
+const ORDER_FOLLOW: usize = 190;
+const ORDER_VALIDATE: usize = 200;
+const ORDER_SECRET: usize = 210;
+const ORDER_SECRET_FILES: usize = 220;
+const ORDER_SUMMARY: usize = 230;
+const ORDER_NOCOUNTS: usize = 240;
+const ORDER_SECRET_DIR: usize = 250;
+const ORDER_HELP: usize = 900;
+const ORDER_VERSION: usize = 910;
 
 /// Determine the current Git branch, defaulting to `main` when the metadata
 /// was not injected during the build.  This is UK spelling friendly as the
@@ -1040,6 +1068,8 @@ fn final_exit_code(code: i32) -> i32 {
 fn build_cli() -> Command {
     let mut cmd = Command::new("fixdecoder")
         .about("FIX protocol utility - Dictionary lookup, file decoder, validator & prettifier")
+        .override_usage(CLI_USAGE)
+        .disable_help_flag(true)
         .disable_version_flag(true)
         .version(version_str())
         .arg(
@@ -1047,6 +1077,7 @@ fn build_cli() -> Command {
                 .long("fix")
                 .value_name("VER")
                 .default_value("44")
+                .display_order(ORDER_FIX)
                 .help("FIX version to use"),
         )
         .arg(
@@ -1054,6 +1085,7 @@ fn build_cli() -> Command {
                 .long("xml")
                 .value_name("FILE")
                 .action(ArgAction::Append)
+                .display_order(ORDER_XML)
                 .help("Path to alternative FIX XML dictionary (repeatable)"),
         );
 
@@ -1062,35 +1094,56 @@ fn build_cli() -> Command {
         "message",
         "MSG",
         "FIX Message name or MsgType (omit value to list all)",
+        ORDER_MESSAGE,
     );
     cmd = add_entity_arg(
         cmd,
         "component",
         "NAME",
         "FIX Component to display (omit value to list all)",
+        ORDER_COMPONENT,
     );
     cmd = add_entity_arg(
         cmd,
         "tag",
         "TAG",
         "FIX Tag number to display (omit value to list all)",
+        ORDER_TAG,
     );
 
     cmd = add_flag_args(
         cmd,
         &[
-            ("column", "Display enums in columns"),
-            ("header", "Include Header block"),
-            ("trailer", "Include Trailer block"),
-            ("verbose", "Show full message structure with enums"),
-            ("info", "Show schema summary"),
-            ("secret", "Obfuscate sensitive FIX tag values"),
+            ("info", "Show schema summary", ORDER_INFO),
+            ("column", "Display enums in columns", ORDER_COLUMN),
+            (
+                "verbose",
+                "Show full message structure with enums",
+                ORDER_VERBOSE,
+            ),
+            ("header", "Include Header block", ORDER_HEADER),
+            ("trailer", "Include Trailer block", ORDER_TRAILER),
+            (
+                "validate",
+                "Validate FIX messages during decoding",
+                ORDER_VALIDATE,
+            ),
+            ("secret", "Obfuscate sensitive FIX tag values", ORDER_SECRET),
             (
                 "secret-files",
                 "Write obfuscated copies of the input files and exit",
+                ORDER_SECRET_FILES,
             ),
-            ("validate", "Validate FIX messages during decoding"),
-            ("nocounts", "Disable the message count summary"),
+            (
+                "summary",
+                "Track order state across messages and print a summary",
+                ORDER_SUMMARY,
+            ),
+            (
+                "nocounts",
+                "Disable the message count summary",
+                ORDER_NOCOUNTS,
+            ),
         ],
     );
 
@@ -1102,24 +1155,28 @@ fn build_cli() -> Command {
             .value_name("yes|no|auto")
             .require_equals(false)
             .default_missing_value("true")
+            .display_order(ORDER_COLOUR)
             .help("Force coloured output"),
     )
     .arg(
         Arg::new("secret-dir")
             .long("secret-dir")
             .value_name("DIR")
+            .display_order(ORDER_SECRET_DIR)
             .help("Directory to write generated secret files into"),
     )
     .arg(
         Arg::new("delimiter")
             .long("delimiter")
             .value_name("CHAR")
+            .display_order(ORDER_DELIMITER)
             .help("Display delimiter between FIX fields (default: SOH)"),
     )
     .arg(
         Arg::new("style")
             .long("style")
             .value_name("STYLE")
+            .display_order(ORDER_STYLE)
             .help("bat-style decorations: plain,numbers,header,grid,full"),
     )
     .arg(
@@ -1127,6 +1184,7 @@ fn build_cli() -> Command {
             .long("plain")
             .short('p')
             .action(ArgAction::SetTrue)
+            .display_order(ORDER_PLAIN)
             .help("Disable file headers, grids, and line numbers"),
     )
     .arg(
@@ -1135,30 +1193,51 @@ fn build_cli() -> Command {
             .visible_alias("line-numbers")
             .short('n')
             .action(ArgAction::SetTrue)
+            .display_order(ORDER_NUMBER)
             .help("Show input line numbers"),
     )
     .arg(
         Arg::new("paging")
             .long("paging")
             .value_name("WHEN")
+            .display_order(ORDER_PAGING)
             .help("Pager mode: auto, never, or always"),
     )
     .arg(
         Arg::new("pager")
             .long("pager")
             .value_name("CMD")
+            .display_order(ORDER_PAGER)
             .help("Pager command to use when paging is enabled"),
     )
     .arg(
         Arg::new("nowrap")
             .long("nowrap")
             .action(ArgAction::SetTrue)
+            .display_order(ORDER_NOWRAP)
             .help("Disable wrapping in pager mode and allow horizontal scrolling"),
+    )
+    .arg(
+        Arg::new("follow")
+            .long("follow")
+            .short('f')
+            .action(ArgAction::SetTrue)
+            .display_order(ORDER_FOLLOW)
+            .help("Stream input like tail -f"),
+    )
+    .arg(
+        Arg::new("help")
+            .long("help")
+            .short('h')
+            .action(ArgAction::Help)
+            .display_order(ORDER_HELP)
+            .help("Print help"),
     )
     .arg(
         Arg::new("version")
             .long("version")
             .action(ArgAction::SetTrue)
+            .display_order(ORDER_VERSION)
             .help("Print version information and exit"),
     )
     .arg(
@@ -1168,19 +1247,6 @@ fn build_cli() -> Command {
             .action(ArgAction::Append)
             .trailing_var_arg(true),
     )
-    .arg(
-        Arg::new("summary")
-            .long("summary")
-            .action(ArgAction::SetTrue)
-            .help("Track order state across messages and print a summary"),
-    )
-    .arg(
-        Arg::new("follow")
-            .long("follow")
-            .short('f')
-            .action(ArgAction::SetTrue)
-            .help("Stream input like tail -f"),
-    )
 }
 
 /// Add a `--name[=VALUE]` argument that can be used with or without a value (defaulting to “true”).
@@ -1189,6 +1255,7 @@ fn add_entity_arg(
     name: &'static str,
     value_name: &'static str,
     help: &'static str,
+    order: usize,
 ) -> Command {
     cmd.arg(
         Arg::new(name)
@@ -1197,18 +1264,20 @@ fn add_entity_arg(
             .value_name(value_name)
             .require_equals(false)
             .default_missing_value("true")
+            .display_order(order)
             .help(help),
     )
 }
 
 /// Add a set of boolean flag arguments that simply flip a boolean when present.
-fn add_flag_args(cmd: Command, flags: &[(&'static str, &'static str)]) -> Command {
+fn add_flag_args(cmd: Command, flags: &[(&'static str, &'static str, usize)]) -> Command {
     let mut out = cmd;
-    for (name, help) in flags {
+    for (name, help, order) in flags {
         out = out.arg(
             Arg::new(*name)
                 .long(*name)
                 .action(ArgAction::SetTrue)
+                .display_order(*order)
                 .help(*help),
         );
     }
@@ -2445,6 +2514,43 @@ mod tests {
     }
 
     #[test]
+    fn build_cli_help_uses_readme_option_order() {
+        let help = build_cli().render_long_help().to_string();
+        assert_ordered(
+            &help,
+            &[
+                "--xml",
+                "--fix",
+                "--info",
+                "--message",
+                "--component",
+                "--tag",
+                "--column",
+                "--verbose",
+                "--header",
+                "--trailer",
+                "--colour",
+                "--delimiter",
+                "--style",
+                "--plain",
+                "--number",
+                "--paging",
+                "--pager",
+                "--nowrap",
+                "--follow",
+                "--validate",
+                "--secret",
+                "--secret-files",
+                "--summary",
+                "--nocounts",
+                "--secret-dir",
+                "--help",
+                "--version",
+            ],
+        );
+    }
+
+    #[test]
     fn build_context_disables_live_status_when_paging_is_active() {
         let mut opts = dummy_opts("44");
         opts.paging = PagingMode::Always;
@@ -2485,13 +2591,13 @@ mod tests {
 
     #[test]
     fn add_flag_args_sets_flags() {
-        let cmd = add_flag_args(Command::new("test"), &[("verbose", "desc")]);
+        let cmd = add_flag_args(Command::new("test"), &[("verbose", "desc", 1)]);
         let matches = cmd
             .try_get_matches_from(["test", "--verbose"])
             .expect("match verbose flag");
         assert!(matches.get_flag("verbose"));
 
-        let matches = add_flag_args(Command::new("test"), &[("verbose", "desc")])
+        let matches = add_flag_args(Command::new("test"), &[("verbose", "desc", 1)])
             .try_get_matches_from(["test"])
             .expect("match empty");
         assert!(!matches.get_flag("verbose"));
@@ -2499,7 +2605,7 @@ mod tests {
 
     #[test]
     fn add_entity_arg_defaults_to_true_when_missing_value() {
-        let cmd = add_entity_arg(Command::new("test"), "tag", "TAG", "desc");
+        let cmd = add_entity_arg(Command::new("test"), "tag", "TAG", "desc", 1);
         let matches = cmd
             .clone()
             .try_get_matches_from(["test", "--tag"])
@@ -2553,6 +2659,16 @@ mod tests {
         );
         assert!(matches.get_flag("nowrap"));
         assert!(matches.get_flag("number"));
+    }
+
+    fn assert_ordered(haystack: &str, needles: &[&str]) {
+        let mut cursor = 0;
+        for needle in needles {
+            let position = haystack[cursor..]
+                .find(needle)
+                .unwrap_or_else(|| panic!("missing {needle} in help output:\n{haystack}"));
+            cursor += position + needle.len();
+        }
     }
 
     #[test]
