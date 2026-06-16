@@ -61,7 +61,13 @@ const VERSION: &str = match option_env!("FIXDECODER_VERSION") {
 
 /// Shell-style default arguments applied ahead of the real CLI.
 const DEFAULT_ARGS_ENV: &str = "FIXDECODER_DEFAULT_ARGS";
-const CLI_USAGE: &str = "fixdecoder [--xml <FILE>]... [--fix <VER>] [--info] [--message [<MSG>]] [--component [<NAME>]] [--tag [<TAG>]] [--column] [--verbose] [--header] [--trailer] [--colour [<yes|no|auto>]] [--delimiter <CHAR>] [--style <STYLE>] [--plain] [--number] [--paging <WHEN>] [--pager <CMD>] [--nowrap] [--follow] [--validate] [--secret] [--secret-files] [--summary] [--nocounts] [--secret-dir <DIR>] [--help] [--version] [FILE]...";
+const CLI_USAGE: &str = "\
+fixdecoder [--xml <FILE>]... [--fix <VER>] [--info] [--message [<MSG>]]
+           [--component [<NAME>]] [--tag [<TAG>]] [--column] [--verbose]
+           [--header] [--trailer] [--colour [<yes|no|auto>]] [--delimiter <CHAR>]
+           [--style <STYLE>] [--plain] [--number] [--paging <WHEN>] [--pager <CMD>]
+           [--nowrap] [--follow] [--validate] [--secret] [--secret-files]
+           [--summary] [--nocounts] [--secret-dir <DIR>] [--help] [--version] [FILE]...";
 const ORDER_XML: usize = 10;
 const ORDER_FIX: usize = 20;
 const ORDER_INFO: usize = 30;
@@ -2551,6 +2557,21 @@ mod tests {
     }
 
     #[test]
+    fn build_cli_usage_lines_fit_ninety_three_columns() {
+        let help = build_cli().render_long_help().to_string();
+        let usage_lines = usage_block_lines(&help);
+
+        assert!(!usage_lines.is_empty(), "help output should include usage");
+        for line in usage_lines {
+            assert!(
+                line.chars().count() <= 93,
+                "usage line exceeds 93 columns ({}): {line}",
+                line.chars().count()
+            );
+        }
+    }
+
+    #[test]
     fn build_context_disables_live_status_when_paging_is_active() {
         let mut opts = dummy_opts("44");
         opts.paging = PagingMode::Always;
@@ -2669,6 +2690,23 @@ mod tests {
                 .unwrap_or_else(|| panic!("missing {needle} in help output:\n{haystack}"));
             cursor += position + needle.len();
         }
+    }
+
+    fn usage_block_lines(help: &str) -> Vec<&str> {
+        let mut lines = Vec::new();
+        let mut in_usage = false;
+        for line in help.lines() {
+            if line.starts_with("Usage:") {
+                in_usage = true;
+            } else if in_usage && line.is_empty() {
+                break;
+            }
+
+            if in_usage {
+                lines.push(line);
+            }
+        }
+        lines
     }
 
     #[test]
