@@ -1,0 +1,88 @@
+---
+# yamllint disable rule:truthy rule:line-length
+name: Traffic Badge
+
+on:
+  schedule:
+    - cron: "23 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: traffic-badge-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: Update traffic badge
+    runs-on: ubuntu-latest
+    if: github.repository_owner == 'stephenlclarke'
+    steps:
+      - uses: actions/checkout@v6
+      - name: Fetch repository traffic
+        env:
+          TRAFFIC_TOKEN: ${{ secrets.TRAFFIC_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${TRAFFIC_TOKEN}" ]; then
+            printf 'TRAFFIC_TOKEN secret is not configured; leaving badge unchanged.\n'
+            exit 0
+          fi
+
+          mkdir -p .badges
+          response="$(mktemp)"
+          status="$(
+            curl --silent --show-error --location \
+              --output "${response}" \
+              --write-out "%{http_code}" \
+              --header "Accept: application/vnd.github+json" \
+              --header "Authorization: Bearer ${TRAFFIC_TOKEN}" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/traffic/views"
+          )"
+
+          if [ "${status}" != "200" ]; then
+            printf '::error::GitHub traffic API returned HTTP %s\n' "${status}"
+            python3 -m json.tool "${response}" || true
+            exit 1
+          fi
+
+          python3 - "${response}" ".badges/traffic.json" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as handle:
+              traffic = json.load(handle)
+
+          views = int(traffic.get("count", 0))
+          uniques = int(traffic.get("uniques", 0))
+          badge = {
+              "schemaVersion": 1,
+              "label": "traffic",
+              "message": f"{uniques:,} unique / {views:,} views / 14d",
+              "color": "blue",
+          }
+
+          with open(sys.argv[2], "w", encoding="utf-8") as handle:
+              json.dump(badge, handle, separators=(",", ":"))
+              handle.write("\n")
+          PY
+      - name: Commit badge update
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet -- .badges/traffic.json; then
+            printf 'Traffic badge is already up to date.\n'
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .badges/traffic.json
+          git commit -m "chore: update traffic badge"
+          git push

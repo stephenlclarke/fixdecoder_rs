@@ -14,7 +14,7 @@
 [![Technical Debt](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder_rs&metric=sqale_index)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder_rs)
 [![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder_rs&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder_rs)
 [![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=stephenlclarke_fixdecoder_rs&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=stephenlclarke_fixdecoder_rs)
-![Repo Visitors](https://visitor-badge.laobi.icu/badge?page_id=stephenlclarke.fixdecoder_rs)
+![Repo Traffic](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fstephenlclarke%2Ffixdecoder_rs%2Fmain%2F.badges%2Ftraffic.json&cacheSeconds=3600)
 
 ---
 
@@ -1436,6 +1436,10 @@ The workspace includes a helper that reassembles TCP streams from PCAP data and 
 - The timeline lists every message for the order with columns: time, msg (enum text plus ClOrdID/OrigClOrdID), ExecAckStatus (for BN), ExecType, OrdStatus, cum/leaves, last@price, avgPx, text. Enums show text; unknown codes show in red; missing text shows as “-” in green.
 - Tenor is computed from TradeDate to ValueDate skipping weekends; SPOT = T+2, TOM = T+1, TOD = T+0, otherwise FWD. (no holiday calendars).
 - If a `--fix` override cannot be found, decoding falls back to the auto-detected dictionary with a warning on stderr and a banner at runtime.
+
+# Repository traffic badge
+
+The public traffic badge is generated from GitHub Insights by `.github/workflows/traffic-badge.yml`. Configure a repository secret named `TRAFFIC_TOKEN` that can call the repository traffic API; for a fine-grained personal access token, grant Repository permissions > Administration: read. The scheduled workflow publishes only the aggregate 14-day unique visitor and view counts to `.badges/traffic.json`.
 
 # Third-Party Specifications
 
