@@ -1,0 +1,52 @@
+name: Bug report
+description: File a reproducible bug report.
+title: "[Bug]: "
+type: "Bug"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a problem. Please remove credentials,
+        tokens, private keys, personal data, and private environment details before
+        submitting.
+  - type: checkboxes
+    id: prereqs
+    attributes:
+      label: Prerequisites
+      options:
+        - label: I searched the existing issues before opening this report.
+          required: true
+        - label: I removed secrets and private data from this report.
+          required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Provide a minimal command sequence, configuration, or input that reproduces the issue.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: Describe what you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: Describe what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include operating system, toolchain, dependency, and version details that are relevant to this report.
+      value: |
+        - OS:
+        - Toolchain/runtime:
+        - Project version or commit:
+    validations:
+      required: true

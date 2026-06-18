@@ -1,0 +1,33 @@
+name: Feature request
+description: Suggest a focused enhancement.
+title: "[Request]: "
+type: "Feature"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve this project. Open a focused request and include
+        links to related issues, documentation, or examples where useful.
+  - type: textarea
+    id: request
+    attributes:
+      label: Request details
+      description: Describe the feature or enhancement and the problem it solves.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe any workaround or alternative design you considered.
+    validations:
+      required: false
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Contribution checks
+      options:
+        - label: I checked existing issues before opening this request.
+          required: true
+        - label: I can help test or review the change if needed.
+          required: false
