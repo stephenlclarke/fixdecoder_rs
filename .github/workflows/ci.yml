@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Download FIX XML dictionaries
+      - name: Verify FIX XML dictionaries
         shell: bash
         run: bash -lc 'source ci/ci_helper.sh && download_fix_specs'
       - name: Upload FIX specs artifact
@@ -366,8 +366,13 @@ jobs:
           fi
           tag_version="${ref#v}"
           cargo_version=$(grep -m1 '^version' Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')
+          pcap_version=$(grep -m1 '^version' pcap2fix/Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')
           if [[ "${cargo_version}" != "${tag_version}" ]]; then
             echo "Tag version (${tag_version}) does not match Cargo.toml (${cargo_version})" >&2
+            exit 1
+          fi
+          if [[ "${pcap_version}" != "${tag_version}" ]]; then
+            echo "Tag version (${tag_version}) does not match pcap2fix/Cargo.toml (${pcap_version})" >&2
             exit 1
           fi
           echo "version=${tag_version}" >> "${GITHUB_OUTPUT}"

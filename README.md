@@ -309,7 +309,9 @@ $ fixdecoder --fix=44 --tag=453 --verbose --column
 
 The `--xml` flag lets you load custom FIX dictionaries from XML files; you can pass it multiple times to register several custom dictionaries. Each file is parsed, normalised to a canonical key (e.g., FIX44, FIX50SP2), and has FIXT11 session header/trailer injected for 5.0+ if missing. Custom entries are registered for tag lookup and schema loading; they override built-ins for the same key and replace earlier `--xml` files for that key, with warnings emitted in both cases.
 
-The XML dictionaries can be downloaded from the [QuickFIX GitHub Repo](https://github.com/quickfix/quickfix/tree/master/spec)
+The built-in XML dictionaries are vendored from a
+[pinned QuickFIX revision](https://github.com/quickfix/quickfix/tree/386ce46e917ae494ab6e90b1be90fd421cdbe3f9/spec);
+`resources/FIX_SPECS.sha256` records the expected files and SHA-256 digests.
 
 <!-- regen-readme:start --option=--xml -->
 Example output:
@@ -686,10 +688,10 @@ rustc 1.96.0 (ac68faa20 2026-05-25) (Homebrew)
 Clone the git repo.
 
 ```bash
-❯ git clone git@github.com:stephenlclarke/fixdecoder.git
-Cloning into 'fixdecoder'...
+❯ git clone git@github.com:stephenlclarke/fixdecoder_rs.git
+Cloning into 'fixdecoder_rs'...
 ...
-❯ cd fixdecoder
+❯ cd fixdecoder_rs
 ```
 
 Then build it. Debug version with clippy and code coverage.
@@ -1421,10 +1423,34 @@ fixdecoder v0.3.0 (branch:main, commit:000918b) [rust:1.96.0]
 The workspace includes a helper that reassembles TCP streams from PCAP data and emits FIX messages to stdout so you can pipe them into `fixdecoder`. I have wrapped it in a shell script (`./scripts/capture_and_decode.sh`) to make it easy to run.
 
 - Build: `cargo build -p pcap2fix` (also built via `make build`).
-- Offline: `pcap2fix --input capture.pcap | fixdecoder`
-- Live (needs tcpdump/dumpcap): `tcpdump -i eth0 -w - 'tcp port 9876' | pcap2fix --port 9876 | fixdecoder`
+- Offline: `pcap2fix --strict --input capture.pcap | fixdecoder`
+- Live (needs tcpdump/dumpcap): `tcpdump -i eth0 -w - 'tcp port 9876' | pcap2fix --strict --port 9876 | fixdecoder`
 - Delimiter defaults to SOH; override with `--delimiter`.
-- Flow buffers are capped (size + idle timeout) to avoid runaway memory during long captures.
+- Idle eviction uses packet capture timestamps, so offline files are processed
+  consistently regardless of playback speed. `--idle-timeout 0` disables it.
+- SYN starts a fresh incarnation of a reused connection tuple; FIN and RST
+  retire it. TCP sequence comparisons also handle 32-bit wrap-around.
+- Per-flow, total-buffer and flow-count limits bound memory during long or
+  hostile captures. Use `--max-flow-bytes`, `--max-total-bytes` and
+  `--max-flows` to tune them.
+- Losses and incomplete streams are reported at the end. `--strict` makes
+  either condition fail the pipeline instead of silently returning success.
+
+Capture the complete TCP conversation rather than filtering for a payload that
+starts with `8=FIX`: later TCP segments commonly begin in the middle of a FIX
+message and content filtering before reassembly discards them. The bundled
+`capture_and_decode.sh` script therefore applies only host and port filters
+before passing packets to `pcap2fix`. Linux cooked capture v1 and v2 are
+supported, including the link type normally produced by `tcpdump -i any`.
+
+## Why PCAP remains the capture interface
+
+eBPF is useful as an optional Linux-only live capture source, but it is not a
+complete replacement for `pcap2fix`. It cannot read existing PCAP/PCAPNG files,
+would remove macOS and Windows portability, and still needs bounded,
+loss-aware TCP stream reassembly before FIX messages can be extracted. An
+eBPF feeder could reduce copies or reject unrelated tuples earlier on Linux;
+the current PCAP input remains the stable offline and cross-platform boundary.
 
 ![Capture and Decode](docs/capture_and_decode.png)
 
@@ -1443,10 +1469,11 @@ The public traffic badge is generated from GitHub Insights by `.github/workflows
 
 # Third-Party Specifications
 
-This project uses the public FIX Protocol XML specifications from the
-[QuickFIX project](https://github.com/quickfix/quickfix/tree/master/spec).
-The XML files are downloaded during the build and used to generate Go sources
-under `fix/` and to drive message decoding at runtime.
+This project vendors the public FIX Protocol XML specifications from
+[QuickFIX commit 386ce46e917ae494ab6e90b1be90fd421cdbe3f9](https://github.com/quickfix/quickfix/tree/386ce46e917ae494ab6e90b1be90fd421cdbe3f9/spec).
+They are used to generate and embed the Rust dictionaries consumed at runtime.
+`resources/FIX_SPECS.sha256` pins the expected contents; the build verifies
+those checksums and downloads a missing file only from that exact revision.
 
 The QuickFIX specifications are licensed under the **BSD 2-Clause License**.
 Their copyright notice and license terms are included in this repository’s

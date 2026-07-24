@@ -18,5 +18,14 @@ target/
 build_version.env
 src/fix/sensitive.rs
 resources/**/*.xml
-!resources/NOTICE.MD
+!resources/FIX40.xml
+!resources/FIX41.xml
+!resources/FIX42.xml
+!resources/FIX43.xml
+!resources/FIX44.xml
+!resources/FIX50.xml
+!resources/FIX50SP1.xml
+!resources/FIX50SP2.xml
+!resources/FIXT11.xml
+!resources/NOTICE.md
 ci/__pycache__/

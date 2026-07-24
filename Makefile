@@ -126,16 +126,16 @@ release:
 	cleanup() { \
 		rc=$$?; \
 		if [ $$rc -ne 0 ]; then \
-			echo "Release failed; restoring Cargo.toml/Cargo.lock" >&2; \
-			git restore --staged Cargo.toml Cargo.lock >/dev/null 2>&1 || true; \
-			git restore Cargo.toml Cargo.lock >/dev/null 2>&1 || true; \
+			echo "Release failed; restoring workspace Cargo manifests and lockfile" >&2; \
+			git restore --staged Cargo.toml pcap2fix/Cargo.toml Cargo.lock >/dev/null 2>&1 || true; \
+			git restore Cargo.toml pcap2fix/Cargo.toml Cargo.lock >/dev/null 2>&1 || true; \
 		fi; \
 		exit $$rc; \
 	}; \
 	trap 'cleanup' EXIT; \
 	$$py ci/bump_version.py "$$ver" "$$next" || exit 1; \
 	echo "Bumped version: $$ver -> $$next"; \
-	if [ -f Cargo.lock ]; then git add Cargo.toml Cargo.lock; else git add Cargo.toml; fi; \
+	if [ -f Cargo.lock ]; then git add Cargo.toml pcap2fix/Cargo.toml Cargo.lock; else git add Cargo.toml pcap2fix/Cargo.toml; fi; \
 	git commit -m "chore(release): v$$next"; \
 	git tag -a "v$$next" -m "Release v$$next"; \
 	git push origin HEAD; \

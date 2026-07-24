@@ -502,8 +502,8 @@ def render_build_examples() -> str:
             render_shell_command(("rustc", "--version")),
         ),
         BuildExample(
-            "git clone git@github.com:stephenlclarke/fixdecoder.git",
-            "Cloning into 'fixdecoder'...\n...\n❯ cd fixdecoder",
+            "git clone git@github.com:stephenlclarke/fixdecoder_rs.git",
+            "Cloning into 'fixdecoder_rs'...\n...\n❯ cd fixdecoder_rs",
         ),
         BuildExample(
             "make clean build scan coverage build-release",

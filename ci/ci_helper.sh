@@ -99,7 +99,8 @@ function ensure_sonar_scanner() {
   fi
   log ">> Installing sonar-scanner CLI locally"
   local tools_dir="${ROOT_DIR}/target/tools"
-  local os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+  local os
+  os="$(uname -s | tr '[:upper:]' '[:lower:]')"
 
   mkdir -p "${tools_dir}"
 
@@ -175,33 +176,63 @@ function crate_version() {
 function download_fix_specs() {
   log ">> Ensuring FIX XML specs are present"
   local resources_dir="${ROOT_DIR}/resources"
+  local checksum_manifest="${resources_dir}/FIX_SPECS.sha256"
+  local quickfix_commit="386ce46e917ae494ab6e90b1be90fd421cdbe3f9"
   mkdir -p "${resources_dir}"
 
-  # Align with embedded dictionaries: 40,41,42,43,44,50,50SP1,50SP2,T11
-  local specs=(
-    "FIX40.xml"
-    "FIX41.xml"
-    "FIX42.xml"
-    "FIX43.xml"
-    "FIX44.xml"
-    "FIX50.xml"
-    "FIX50SP1.xml"
-    "FIX50SP2.xml"
-    "FIXT11.xml"
-  )
+  if [[ ! -f "${checksum_manifest}" ]]; then
+    echo "Missing FIX specification checksum manifest: ${checksum_manifest}" >&2
+    exit 1
+  fi
 
-  for spec in "${specs[@]}"; do
-    local dest="${resources_dir}/${spec}"
-    local url="https://raw.githubusercontent.com/quickfix/quickfix/master/spec/${spec}"
-    if [[ -f "${dest}" ]]; then
+  local expected_checksum spec
+  while read -r expected_checksum spec; do
+    if [[ -z "${expected_checksum}" || "${expected_checksum}" == \#* ]]; then
       continue
     fi
+    if [[ ! "${spec}" =~ ^FIX(40|41|42|43|44|50|50SP1|50SP2|T11)\.xml$ ]]; then
+      echo "Unexpected FIX specification in checksum manifest: ${spec}" >&2
+      exit 1
+    fi
+
+    local dest="${resources_dir}/${spec}"
+    local url="https://raw.githubusercontent.com/quickfix/quickfix/${quickfix_commit}/spec/${spec}"
+    if [[ -f "${dest}" ]]; then
+      local actual_checksum
+      if command -v sha256sum >/dev/null 2>&1; then
+        actual_checksum="$(sha256sum "${dest}" | awk '{print $1}')"
+      else
+        actual_checksum="$(shasum -a 256 "${dest}" | awk '{print $1}')"
+      fi
+      if [[ "${actual_checksum}" == "${expected_checksum}" ]]; then
+        continue
+      fi
+      echo "FIX specification checksum mismatch: ${dest}" >&2
+      exit 1
+    fi
+
     log "   downloading ${spec}"
-    if ! curl -fsSL -o "${dest}" "${url}"; then
+    local temporary
+    temporary="$(mktemp "${dest}.tmp.XXXXXX")"
+    if ! curl -fsSL -o "${temporary}" "${url}"; then
+      rm -f "${temporary}"
       echo "Failed to download ${spec} from ${url}" >&2
       exit 1
     fi
-  done
+    local downloaded_checksum
+    if command -v sha256sum >/dev/null 2>&1; then
+      downloaded_checksum="$(sha256sum "${temporary}" | awk '{print $1}')"
+    else
+      downloaded_checksum="$(shasum -a 256 "${temporary}" | awk '{print $1}')"
+    fi
+    if [[ "${downloaded_checksum}" != "${expected_checksum}" ]]; then
+      rm -f "${temporary}"
+      echo "Downloaded FIX specification checksum mismatch: ${spec}" >&2
+      exit 1
+    fi
+    mv "${temporary}" "${dest}"
+    chmod 0644 "${dest}"
+  done < "${checksum_manifest}"
 }
 
 function ensure_build_metadata() {
@@ -221,7 +252,7 @@ function ensure_build_metadata() {
     commit=$(git rev-parse --short HEAD 2>/dev/null || echo "0000000")
   fi
   if [[ -z "${url}" ]]; then
-    url=$(git remote get-url origin 2>/dev/null || echo "https://github.com/stephenlclarke/fixdecoder.git")
+    url=$(git remote get-url origin 2>/dev/null || echo "https://github.com/stephenlclarke/fixdecoder_rs.git")
   fi
   local version
   if [[ -n "${FIXDECODER_VERSION:-}" ]]; then

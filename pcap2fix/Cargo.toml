@@ -1,10 +1,10 @@
 [package]
 name = "pcap2fix"
-version = "0.1.0"
+version = "0.3.0"
 edition = "2021"
 license = "AGPL-3.0-only"
 description = "PCAP to FIX stream filter: reassembles TCP payloads and emits FIX messages"
-repository = "https://github.com/stephenlclarke/fixdecoder2"
+repository = "https://github.com/stephenlclarke/fixdecoder_rs"
 
 [dependencies]
 anyhow = "1.0"

@@ -9,14 +9,17 @@ use pcap_parser::data::{get_packetdata, PacketData, ETHERTYPE_IPV4, ETHERTYPE_IP
 use pcap_parser::pcapng::Block;
 use pcap_parser::traits::{PcapNGPacketBlock, PcapReaderIterator};
 use pcap_parser::{create_reader, Linktype, PcapBlockOwned};
+use std::collections::hash_map::Entry as HashMapEntry;
 use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::{self, Write};
 use std::net::IpAddr;
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::mpsc::{self, Receiver, Sender, SyncSender};
+use std::sync::Arc;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use thiserror::Error;
 
 #[derive(Parser, Debug)]
@@ -34,9 +37,18 @@ struct Args {
     /// Max bytes to buffer per flow before eviction
     #[arg(long, default_value = "1048576")]
     max_flow_bytes: usize,
-    /// Idle timeout for flows (seconds)
+    /// Max TCP flows retained at once
+    #[arg(long, default_value = "4096")]
+    max_flows: usize,
+    /// Max bytes buffered across all flows
+    #[arg(long, default_value = "67108864")]
+    max_total_bytes: usize,
+    /// Idle timeout for flows in capture time seconds; 0 disables idle eviction
     #[arg(long, default_value = "60")]
     idle_timeout: u64,
+    /// Exit unsuccessfully if packets or incomplete flows are dropped
+    #[arg(long)]
+    strict: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -53,16 +65,16 @@ struct FlowState {
     next_seq: Option<u32>,
     buffer: Vec<u8>,
     pending: BTreeMap<u32, Vec<u8>>,
-    last_seen: Instant,
+    last_seen: Duration,
 }
 
-impl Default for FlowState {
-    fn default() -> Self {
-        FlowState {
+impl FlowState {
+    fn new(last_seen: Duration) -> Self {
+        Self {
             next_seq: None,
             buffer: Vec::new(),
             pending: BTreeMap::new(),
-            last_seen: Instant::now(),
+            last_seen,
         }
     }
 }
@@ -71,39 +83,111 @@ impl Default for FlowState {
 enum ReassemblyError {
     #[error("flow exceeded max buffer")]
     Overflow,
+    #[error("capture exceeded max total buffer")]
+    TotalOverflow,
+    #[error("capture exceeded max flow count")]
+    FlowLimit,
 }
 
-#[derive(Clone, Copy)]
+struct ResourceBudget {
+    flows: AtomicUsize,
+    buffered_bytes: AtomicUsize,
+    max_flows: usize,
+    max_total_bytes: usize,
+}
+
+impl ResourceBudget {
+    fn new(max_flows: usize, max_total_bytes: usize) -> Self {
+        Self {
+            flows: AtomicUsize::new(0),
+            buffered_bytes: AtomicUsize::new(0),
+            max_flows,
+            max_total_bytes,
+        }
+    }
+
+    fn try_acquire_flow(&self) -> bool {
+        self.flows
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+                (current < self.max_flows).then_some(current + 1)
+            })
+            .is_ok()
+    }
+
+    fn release_flow(&self, buffered_bytes: usize) {
+        self.flows.fetch_sub(1, Ordering::AcqRel);
+        if buffered_bytes > 0 {
+            self.buffered_bytes
+                .fetch_sub(buffered_bytes, Ordering::AcqRel);
+        }
+    }
+
+    fn update_buffered_bytes(&self, before: usize, after: usize) -> bool {
+        if after > before {
+            let total = self
+                .buffered_bytes
+                .fetch_add(after - before, Ordering::AcqRel)
+                + (after - before);
+            total <= self.max_total_bytes
+        } else {
+            self.buffered_bytes
+                .fetch_sub(before - after, Ordering::AcqRel);
+            true
+        }
+    }
+}
+
+#[derive(Clone)]
 struct CaptureOptions {
     port_filter: Option<u16>,
     delimiter: u8,
     max_flow_bytes: usize,
     idle_timeout: Duration,
+    budget: Arc<ResourceBudget>,
+}
+
+#[derive(Clone, Copy)]
+struct InterfaceInfo {
+    linktype: Linktype,
+    timestamp_resolution: u64,
+    timestamp_offset: u64,
+}
+
+struct CapturedPacket<'a> {
+    data: &'a [u8],
+    linktype: Linktype,
+    captured_len: usize,
+    captured_at: Duration,
 }
 
 #[derive(Default)]
 struct CaptureState {
     legacy_linktype: Option<Linktype>,
-    idb_linktypes: HashMap<u32, Linktype>,
+    legacy_nanosecond_precision: bool,
+    interfaces: HashMap<u32, InterfaceInfo>,
     next_if_id: u32,
     next_packet_index: u64,
-    last_idle_sweep: Option<Instant>,
+    last_capture_time: Option<Duration>,
+    last_idle_sweep: Option<Duration>,
+    losses: usize,
 }
 
 #[derive(Debug)]
 struct PacketWork {
     index: u64,
-    seen_at: Instant,
+    captured_at: Duration,
     key: FlowKey,
     seq: u32,
     payload: Vec<u8>,
+    starts_flow: bool,
+    ends_flow: bool,
 }
 
 #[derive(Debug)]
 struct PacketResult {
     index: u64,
     output: Vec<u8>,
-    warning: Option<String>,
+    warnings: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -112,14 +196,20 @@ struct BufferedFlowOutput {
     output: Vec<u8>,
 }
 
+#[derive(Default)]
+struct ShardReport {
+    buffered: Vec<BufferedFlowOutput>,
+    losses: usize,
+}
+
 enum ShardCommand {
     Packet(PacketWork),
-    EvictIdle(Instant),
+    EvictIdle(Duration),
 }
 
 struct FlowShard {
-    sender: Sender<ShardCommand>,
-    handle: thread::JoinHandle<Vec<BufferedFlowOutput>>,
+    sender: SyncSender<ShardCommand>,
+    handle: thread::JoinHandle<ShardReport>,
 }
 
 struct FlowShardPool {
@@ -127,10 +217,14 @@ struct FlowShardPool {
     results: Receiver<PacketResult>,
     pending: BTreeMap<u64, PacketResult>,
     next_output_index: u64,
+    losses: usize,
 }
 
 const FIX_BEGIN: &[u8] = b"8=FIX";
 const IDLE_SWEEP_INTERVAL: Duration = Duration::from_secs(1);
+const WORK_QUEUE_CAPACITY: usize = 256;
+const LINKTYPE_LINUX_SLL2: Linktype = Linktype(276);
+const LINUX_SLL2_HEADER_LEN: usize = 20;
 
 enum MessageEnd {
     Complete(usize),
@@ -146,11 +240,12 @@ impl FlowShardPool {
             .max(1);
         let (result_tx, result_rx) = mpsc::channel();
         let mut shards = Vec::with_capacity(shard_count);
+        let queue_capacity = (WORK_QUEUE_CAPACITY / shard_count).max(1);
 
         for index in 0..shard_count {
-            let (work_tx, work_rx) = mpsc::channel();
+            let (work_tx, work_rx) = mpsc::sync_channel(queue_capacity);
             let shard_results = result_tx.clone();
-            let shard_options = options;
+            let shard_options = options.clone();
             let handle = thread::Builder::new()
                 .name(format!("pcap2fix-flow-{index}"))
                 .spawn(move || run_flow_shard(work_rx, shard_results, shard_options))
@@ -167,10 +262,12 @@ impl FlowShardPool {
             results: result_rx,
             pending: BTreeMap::new(),
             next_output_index: 0,
+            losses: 0,
         }
     }
 
     fn submit<W: Write>(&mut self, work: PacketWork, out: &mut W) -> Result<()> {
+        self.drain_ready_results(out)?;
         let shard_index = self.shard_index(work.key);
         self.shards[shard_index]
             .sender
@@ -179,7 +276,8 @@ impl FlowShardPool {
         self.drain_ready_results(out)
     }
 
-    fn evict_idle<W: Write>(&mut self, now: Instant, out: &mut W) -> Result<()> {
+    fn evict_idle<W: Write>(&mut self, now: Duration, out: &mut W) -> Result<()> {
+        self.drain_ready_results(out)?;
         for shard in &self.shards {
             shard
                 .sender
@@ -189,18 +287,18 @@ impl FlowShardPool {
         self.drain_ready_results(out)
     }
 
-    fn finish<W: Write>(mut self, out: &mut W) -> Result<()> {
+    fn finish<W: Write>(mut self, out: &mut W) -> Result<usize> {
         self.drain_ready_results(out)?;
 
         let mut buffered = Vec::new();
         for shard in self.shards.drain(..) {
             drop(shard.sender);
-            buffered.extend(
-                shard
-                    .handle
-                    .join()
-                    .map_err(|_| anyhow!("flow shard worker panicked"))?,
-            );
+            let report = shard
+                .handle
+                .join()
+                .map_err(|_| anyhow!("flow shard worker panicked"))?;
+            self.losses += report.losses;
+            buffered.extend(report.buffered);
         }
 
         while let Ok(result) = self.results.recv() {
@@ -216,7 +314,7 @@ impl FlowShardPool {
             out.write_all(&item.output)?;
         }
 
-        Ok(())
+        Ok(self.losses)
     }
 
     fn shard_index(&self, key: FlowKey) -> usize {
@@ -239,8 +337,9 @@ impl FlowShardPool {
         self.pending.insert(result.index, result);
 
         while let Some(result) = self.pending.remove(&self.next_output_index) {
-            if let Some(warning) = result.warning {
+            for warning in result.warnings {
                 eprintln!("{warning}");
+                self.losses += 1;
             }
             out.write_all(&result.output)?;
             self.next_output_index += 1;
@@ -254,39 +353,56 @@ fn run_flow_shard(
     work_rx: Receiver<ShardCommand>,
     result_tx: Sender<PacketResult>,
     options: CaptureOptions,
-) -> Vec<BufferedFlowOutput> {
+) -> ShardReport {
     let mut flows = HashMap::new();
     let mut scratch = Vec::new();
+    let mut losses = 0;
 
     while let Ok(command) = work_rx.recv() {
         match command {
             ShardCommand::Packet(work) => {
                 let mut output = Vec::new();
-                let warning =
-                    handle_packet_work(&work, &options, &mut flows, &mut scratch, &mut output)
-                        .err()
-                        .map(|err| format!("warn: skipping packet: {err}"));
+                let warnings = match handle_packet_work(
+                    &work,
+                    &options,
+                    &mut flows,
+                    &mut scratch,
+                    &mut output,
+                ) {
+                    Ok(warnings) => warnings,
+                    Err(err) => vec![format!("warn: skipping packet: {err}")],
+                };
 
                 if result_tx
                     .send(PacketResult {
                         index: work.index,
                         output,
-                        warning,
+                        warnings,
                     })
                     .is_err()
                 {
                     break;
                 }
 
-                evict_idle_at(&mut flows, options.idle_timeout, work.seen_at);
+                losses += evict_idle_at(
+                    &mut flows,
+                    options.idle_timeout,
+                    work.captured_at,
+                    &options.budget,
+                );
             }
             ShardCommand::EvictIdle(now) => {
-                evict_idle_at(&mut flows, options.idle_timeout, now);
+                losses += evict_idle_at(&mut flows, options.idle_timeout, now, &options.budget);
             }
         }
     }
 
-    flush_remaining_flow_outputs(&mut flows, options.delimiter, &mut scratch)
+    let (buffered, trailing_losses) =
+        flush_remaining_flow_outputs(&mut flows, options.delimiter, &mut scratch, &options.budget);
+    ShardReport {
+        buffered,
+        losses: losses + trailing_losses,
+    }
 }
 
 fn main() -> Result<()> {
@@ -294,20 +410,37 @@ fn main() -> Result<()> {
 }
 
 fn run(args: Args) -> Result<()> {
+    if args.max_flow_bytes == 0 {
+        return Err(anyhow!("--max-flow-bytes must be greater than zero"));
+    }
+    if args.max_flows == 0 {
+        return Err(anyhow!("--max-flows must be greater than zero"));
+    }
+    if args.max_total_bytes == 0 {
+        return Err(anyhow!("--max-total-bytes must be greater than zero"));
+    }
+
     let options = CaptureOptions {
         port_filter: args.port,
         delimiter: parse_delimiter(&args.delimiter)?,
         max_flow_bytes: args.max_flow_bytes,
         idle_timeout: Duration::from_secs(args.idle_timeout),
+        budget: Arc::new(ResourceBudget::new(args.max_flows, args.max_total_bytes)),
     };
     let mut reader = open_reader(&args.input)?;
     let mut state = CaptureState::default();
-    let mut shards = FlowShardPool::new(options);
+    let mut shards = FlowShardPool::new(options.clone());
     let mut stdout = io::BufWriter::new(io::stdout().lock());
 
     process_capture(&mut *reader, &options, &mut state, &mut shards, &mut stdout)?;
-    shards.finish(&mut stdout)?;
+    let losses = state.losses + shards.finish(&mut stdout)?;
     stdout.flush()?;
+    if losses > 0 {
+        eprintln!("warn: capture completed with {losses} dropped packet(s) or incomplete flow(s)");
+        if args.strict {
+            return Err(anyhow!("capture was incomplete ({losses} loss event(s))"));
+        }
+    }
     Ok(())
 }
 
@@ -321,9 +454,8 @@ fn process_capture<R: PcapReaderIterator + ?Sized, W: Write>(
     loop {
         match reader.next() {
             Ok((offset, block)) => {
-                handle_block(block, options, state, shards, out);
+                handle_block(block, options, state, shards, out)?;
                 reader.consume(offset);
-                sweep_idle_flows(state, shards, out)?;
             }
             Err(pcap_parser::PcapError::Eof) => return Ok(()),
             Err(pcap_parser::PcapError::Incomplete) => {
@@ -337,18 +469,24 @@ fn process_capture<R: PcapReaderIterator + ?Sized, W: Write>(
 }
 
 fn sweep_idle_flows<W: Write>(
+    captured_at: Duration,
+    options: &CaptureOptions,
     state: &mut CaptureState,
     shards: &mut FlowShardPool,
     out: &mut W,
 ) -> Result<()> {
-    let now = Instant::now();
+    state.last_capture_time = Some(captured_at);
+    if options.idle_timeout.is_zero() {
+        return Ok(());
+    }
+
     let should_sweep = state
         .last_idle_sweep
-        .map(|last| now.duration_since(last) >= IDLE_SWEEP_INTERVAL)
+        .map(|last| captured_at.saturating_sub(last) >= IDLE_SWEEP_INTERVAL)
         .unwrap_or(true);
     if should_sweep {
-        shards.evict_idle(now, out)?;
-        state.last_idle_sweep = Some(now);
+        shards.evict_idle(captured_at, out)?;
+        state.last_idle_sweep = Some(captured_at);
     }
     Ok(())
 }
@@ -359,25 +497,39 @@ fn handle_block<W: Write>(
     state: &mut CaptureState,
     shards: &mut FlowShardPool,
     out: &mut W,
-) {
+) -> Result<()> {
     match block {
         PcapBlockOwned::LegacyHeader(header) => {
             state.legacy_linktype = Some(header.network);
+            state.legacy_nanosecond_precision = header.is_nanosecond_precision();
         }
         PcapBlockOwned::Legacy(packet) => {
             let linktype = state.legacy_linktype.unwrap_or(Linktype::ETHERNET);
+            let captured_at = capture_timestamp(
+                packet.ts_sec,
+                packet.ts_usec,
+                if state.legacy_nanosecond_precision {
+                    1_000_000_000
+                } else {
+                    1_000_000
+                },
+            )?;
             handle_packet_block(
-                packet.data,
-                linktype,
-                packet.caplen as usize,
+                CapturedPacket {
+                    data: packet.data,
+                    linktype,
+                    captured_len: packet.caplen as usize,
+                    captured_at,
+                },
                 options,
                 state,
                 shards,
                 out,
-            );
+            )?;
         }
-        PcapBlockOwned::NG(block) => handle_ng_block(block, options, state, shards, out),
+        PcapBlockOwned::NG(block) => handle_ng_block(block, options, state, shards, out)?,
     }
+    Ok(())
 }
 
 fn handle_ng_block<W: Write>(
@@ -386,71 +538,148 @@ fn handle_ng_block<W: Write>(
     state: &mut CaptureState,
     shards: &mut FlowShardPool,
     out: &mut W,
-) {
+) -> Result<()> {
     match block {
         Block::SectionHeader(_) => {
-            state.idb_linktypes.clear();
+            state.interfaces.clear();
             state.next_if_id = 0;
         }
         Block::InterfaceDescription(description) => {
-            state
-                .idb_linktypes
-                .insert(state.next_if_id, description.linktype);
+            let Some(timestamp_resolution) = description.ts_resolution() else {
+                record_capture_loss(state, "invalid PCAPNG interface timestamp resolution");
+                state.next_if_id += 1;
+                return Ok(());
+            };
+            state.interfaces.insert(
+                state.next_if_id,
+                InterfaceInfo {
+                    linktype: description.linktype,
+                    timestamp_resolution,
+                    timestamp_offset: description.ts_offset(),
+                },
+            );
             state.next_if_id += 1;
         }
         Block::EnhancedPacket(packet) => {
-            if let Some(linktype) = state.idb_linktypes.get(&packet.if_id).copied() {
+            if let Some(interface) = state.interfaces.get(&packet.if_id).copied() {
+                let (seconds, fractional) =
+                    packet.decode_ts(interface.timestamp_offset, interface.timestamp_resolution);
+                let captured_at =
+                    capture_timestamp(seconds, fractional, interface.timestamp_resolution)?;
                 handle_packet_block(
-                    packet.packet_data(),
-                    linktype,
-                    packet.caplen as usize,
+                    CapturedPacket {
+                        data: packet.packet_data(),
+                        linktype: interface.linktype,
+                        captured_len: packet.caplen as usize,
+                        captured_at,
+                    },
                     options,
                     state,
                     shards,
                     out,
+                )?;
+            } else {
+                record_capture_loss(
+                    state,
+                    &format!(
+                        "PCAPNG packet references unknown interface {}",
+                        packet.if_id
+                    ),
                 );
             }
         }
         Block::SimplePacket(packet) => {
-            if let Some(linktype) = state.idb_linktypes.get(&0).copied() {
+            if let Some(interface) = state.interfaces.get(&0).copied() {
                 handle_packet_block(
-                    packet.packet_data(),
-                    linktype,
-                    packet.origlen as usize,
+                    CapturedPacket {
+                        data: packet.packet_data(),
+                        linktype: interface.linktype,
+                        captured_len: packet.origlen as usize,
+                        captured_at: state.last_capture_time.unwrap_or_default(),
+                    },
                     options,
                     state,
                     shards,
                     out,
-                );
+                )?;
+            } else {
+                record_capture_loss(state, "PCAPNG simple packet has no interface description");
             }
         }
         _ => {}
     }
+    Ok(())
 }
 
 fn handle_packet_block<W: Write>(
-    data: &[u8],
-    linktype: Linktype,
-    captured_len: usize,
+    captured: CapturedPacket<'_>,
     options: &CaptureOptions,
     state: &mut CaptureState,
     shards: &mut FlowShardPool,
     out: &mut W,
-) {
-    let Some(packet) = get_packetdata(data, linktype, captured_len) else {
-        return;
+) -> Result<()> {
+    sweep_idle_flows(captured.captured_at, options, state, shards, out)?;
+    let Some(packet) = decode_packet_data(captured.data, captured.linktype, captured.captured_len)
+    else {
+        record_capture_loss(state, "unsupported or truncated packet data");
+        return Ok(());
     };
+    if matches!(packet, PacketData::Unsupported(_)) {
+        record_capture_loss(
+            state,
+            &format!("unsupported capture link type {}", captured.linktype.0),
+        );
+        return Ok(());
+    }
     let index = state.next_packet_index;
-    match packet_to_work(packet, options.port_filter, index, Instant::now()) {
+    match packet_to_work(packet, options.port_filter, index, captured.captured_at) {
         Ok(Some(work)) => {
             state.next_packet_index += 1;
             if let Err(err) = shards.submit(work, out) {
-                eprintln!("warn: skipping packet: {err}");
+                record_capture_loss(state, &format!("flow worker rejected packet: {err}"));
             }
         }
         Ok(None) => {}
-        Err(err) => eprintln!("warn: skipping packet: {err}"),
+        Err(err) => record_capture_loss(state, &format!("skipping packet: {err}")),
     }
+    Ok(())
+}
+
+fn decode_packet_data(
+    data: &[u8],
+    linktype: Linktype,
+    captured_len: usize,
+) -> Option<PacketData<'_>> {
+    if linktype != LINKTYPE_LINUX_SLL2 {
+        return get_packetdata(data, linktype, captured_len);
+    }
+    if captured_len < LINUX_SLL2_HEADER_LEN || data.len() < captured_len {
+        return None;
+    }
+
+    let protocol = u16::from_be_bytes([data[0], data[1]]);
+    let hardware_type = u16::from_be_bytes([data[8], data[9]]);
+    let payload = &data[LINUX_SLL2_HEADER_LEN..captured_len];
+    match hardware_type {
+        778 => Some(PacketData::L4(47, payload)),
+        803 | 824 => Some(PacketData::Unsupported(payload)),
+        _ => Some(PacketData::L3(protocol, payload)),
+    }
+}
+
+fn capture_timestamp(seconds: u32, fractional: u32, resolution: u64) -> Result<Duration> {
+    if resolution == 0 || u64::from(fractional) >= resolution {
+        return Err(anyhow!(
+            "invalid capture timestamp {seconds}+{fractional}/{resolution}"
+        ));
+    }
+    let nanos = (u128::from(fractional) * 1_000_000_000u128 / u128::from(resolution)) as u32;
+    Ok(Duration::new(u64::from(seconds), nanos))
+}
+
+fn record_capture_loss(state: &mut CaptureState, warning: &str) {
+    state.losses += 1;
+    eprintln!("warn: {warning}");
 }
 
 fn open_reader(path: &str) -> Result<Box<dyn PcapReaderIterator>> {
@@ -484,18 +713,18 @@ fn packet_to_work(
     packet: PacketData<'_>,
     port_filter: Option<u16>,
     index: u64,
-    seen_at: Instant,
+    captured_at: Duration,
 ) -> Result<Option<PacketWork>> {
     match packet {
         PacketData::L2(data) => {
             let sliced = SlicedPacket::from_ethernet(data).map_err(|e| anyhow!("parse: {e:?}"))?;
-            sliced_packet_to_work(sliced, port_filter, index, seen_at)
+            sliced_packet_to_work(sliced, port_filter, index, captured_at)
         }
         PacketData::L3(ethertype, data)
             if ethertype == ETHERTYPE_IPV4 || ethertype == ETHERTYPE_IPV6 =>
         {
             let sliced = SlicedPacket::from_ip(data).map_err(|e| anyhow!("parse: {e:?}"))?;
-            sliced_packet_to_work(sliced, port_filter, index, seen_at)
+            sliced_packet_to_work(sliced, port_filter, index, captured_at)
         }
         _ => Ok(None),
     }
@@ -505,7 +734,7 @@ fn sliced_packet_to_work(
     sliced: SlicedPacket<'_>,
     port_filter: Option<u16>,
     index: u64,
-    seen_at: Instant,
+    captured_at: Duration,
 ) -> Result<Option<PacketWork>> {
     let (src, dst, tcp) = match (sliced.net, sliced.transport) {
         (Some(NetSlice::Ipv4(ip)), Some(TransportSlice::Tcp(tcp))) => (
@@ -527,21 +756,25 @@ fn sliced_packet_to_work(
     }
 
     let payload = tcp.payload();
-    if payload.is_empty() {
+    let starts_flow = tcp.syn();
+    let ends_flow = tcp.fin() || tcp.rst();
+    if payload.is_empty() && !starts_flow && !ends_flow {
         return Ok(None);
     }
 
     Ok(Some(PacketWork {
         index,
-        seen_at,
+        captured_at,
         key: FlowKey {
             src,
             dst,
             sport: tcp.source_port(),
             dport: tcp.destination_port(),
         },
-        seq: tcp.sequence_number(),
+        seq: tcp.sequence_number().wrapping_add(u32::from(starts_flow)),
         payload: payload.to_vec(),
+        starts_flow,
+        ends_flow,
     }))
 }
 
@@ -551,18 +784,73 @@ fn handle_packet_work<W: Write>(
     flows: &mut HashMap<FlowKey, FlowState>,
     scratch: &mut Vec<u8>,
     out: &mut W,
-) -> Result<()> {
-    let flow = flows.entry(work.key).or_default();
-    flow.last_seen = work.seen_at;
-    reassemble_and_emit_with_scratch(
-        flow,
-        work.seq,
-        &work.payload,
-        options.delimiter,
-        options.max_flow_bytes,
-        scratch,
-        out,
-    )
+) -> Result<Vec<String>> {
+    let mut warnings = Vec::new();
+
+    if work.starts_flow {
+        if let Some(flow) = flows.remove(&work.key) {
+            let buffered = buffered_bytes(&flow);
+            options.budget.release_flow(buffered);
+            if buffered > 0 {
+                warnings.push("warn: SYN reset an incomplete existing flow".to_string());
+            }
+        }
+    }
+
+    if let HashMapEntry::Vacant(entry) = flows.entry(work.key) {
+        if !options.budget.try_acquire_flow() {
+            return Ok(vec![format!(
+                "warn: skipping packet: {}",
+                ReassemblyError::FlowLimit
+            )]);
+        }
+        entry.insert(FlowState::new(work.captured_at));
+    }
+
+    let flow = flows
+        .get_mut(&work.key)
+        .expect("flow inserted before packet processing");
+    flow.last_seen = work.captured_at;
+    let before = buffered_bytes(flow);
+
+    if !work.payload.is_empty() {
+        if let Err(err) = reassemble_and_emit_with_scratch(
+            flow,
+            work.seq,
+            &work.payload,
+            options.delimiter,
+            options.max_flow_bytes,
+            scratch,
+            out,
+        ) {
+            warnings.push(format!("warn: skipping packet: {err}"));
+        }
+    }
+
+    let after = buffered_bytes(flow);
+    if !options.budget.update_buffered_bytes(before, after) {
+        flow.buffer.clear();
+        flow.pending.clear();
+        flow.next_seq = None;
+        options.budget.update_buffered_bytes(after, 0);
+        warnings.push(format!(
+            "warn: skipping packet: {}",
+            ReassemblyError::TotalOverflow
+        ));
+    }
+
+    if work.ends_flow {
+        let flow = flows
+            .remove(&work.key)
+            .expect("flow exists until FIN or RST handling");
+        let buffered = buffered_bytes(&flow);
+        options.budget.release_flow(buffered);
+        if buffered > 0 {
+            warnings.push("warn: FIN or RST closed an incomplete flow".to_string());
+        }
+    }
+
+    Ok(warnings)
 }
 
 #[cfg(test)]
@@ -574,17 +862,24 @@ fn handle_sliced_packet<W: Write>(
     flows: &mut HashMap<FlowKey, FlowState>,
     out: &mut W,
 ) -> Result<()> {
+    let budget = Arc::new(ResourceBudget::new(1024, 16 * 1024 * 1024));
     let options = CaptureOptions {
         port_filter,
         delimiter,
         max_flow_bytes,
         idle_timeout: Duration::from_secs(60),
+        budget,
     };
-    let Some(work) = sliced_packet_to_work(sliced, port_filter, 0, Instant::now())? else {
+    let Some(work) = sliced_packet_to_work(sliced, port_filter, 0, Duration::ZERO)? else {
         return Ok(());
     };
     let mut scratch = Vec::new();
-    handle_packet_work(&work, &options, flows, &mut scratch, out)
+    let warnings = handle_packet_work(&work, &options, flows, &mut scratch, out)?;
+    if warnings.is_empty() {
+        Ok(())
+    } else {
+        Err(anyhow!(warnings.join("; ")))
+    }
 }
 
 #[cfg(test)]
@@ -621,7 +916,7 @@ fn reassemble_and_emit_with_scratch<W: Write>(
 
     if seq == expected {
         append_segment(flow, seq, payload);
-    } else if seq > expected {
+    } else if sequence_after(seq, expected) {
         store_future_segment(flow, seq, payload);
     } else {
         append_segment(flow, seq, payload);
@@ -650,11 +945,14 @@ fn append_segment(flow: &mut FlowState, seq: u32, payload: &[u8]) {
     }
 
     let end = seq.wrapping_add(payload.len() as u32);
-    if end <= expected {
+    if !sequence_after(end, expected) {
         return;
     }
 
-    let overlap = (expected - seq) as usize;
+    let overlap = expected.wrapping_sub(seq) as usize;
+    if overlap >= payload.len() {
+        return;
+    }
     flow.buffer.extend_from_slice(&payload[overlap..]);
     flow.next_seq = Some(expected.wrapping_add((payload.len() - overlap) as u32));
 }
@@ -673,17 +971,26 @@ fn store_future_segment(flow: &mut FlowState, seq: u32, payload: &[u8]) {
 }
 
 fn drain_pending_segments(flow: &mut FlowState) {
-    while let Some((&seq, _)) = flow.pending.first_key_value() {
-        let expected = flow.next_seq.unwrap_or(seq);
-        if seq > expected {
+    while let Some(expected) = flow.next_seq {
+        let Some(seq) = flow
+            .pending
+            .keys()
+            .copied()
+            .filter(|candidate| !sequence_after(*candidate, expected))
+            .min_by_key(|candidate| expected.wrapping_sub(*candidate))
+        else {
             break;
-        }
+        };
         let segment = flow
             .pending
             .remove(&seq)
             .expect("segment present in pending map");
         append_segment(flow, seq, &segment);
     }
+}
+
+fn sequence_after(sequence: u32, reference: u32) -> bool {
+    (sequence.wrapping_sub(reference) as i32) > 0
 }
 
 fn buffered_bytes(flow: &FlowState) -> usize {
@@ -828,29 +1135,63 @@ fn flush_remaining_flow_outputs(
     flows: &mut HashMap<FlowKey, FlowState>,
     delimiter: u8,
     scratch: &mut Vec<u8>,
-) -> Vec<BufferedFlowOutput> {
+    budget: &ResourceBudget,
+) -> (Vec<BufferedFlowOutput>, usize) {
     let mut ordered_flows: Vec<_> = flows.drain().collect();
     ordered_flows.sort_by_key(|(key, _)| *key);
 
     let mut outputs = Vec::new();
+    let mut losses = 0;
     for (key, mut flow) in ordered_flows {
+        let buffered_before_flush = buffered_bytes(&flow);
         let mut output = Vec::new();
         flush_complete_messages(&mut flow.buffer, delimiter, scratch, &mut output)
             .expect("writing flow output into a Vec cannot fail");
+        if buffered_bytes(&flow) > 0 {
+            losses += 1;
+        }
+        budget.release_flow(buffered_before_flush);
         if !output.is_empty() {
             outputs.push(BufferedFlowOutput { key, output });
         }
     }
-    outputs
+    (outputs, losses)
 }
 
 #[cfg(test)]
 fn evict_idle(flows: &mut HashMap<FlowKey, FlowState>, idle: Duration) {
-    evict_idle_at(flows, idle, Instant::now());
+    let budget = ResourceBudget::new(1024, 16 * 1024 * 1024);
+    budget.flows.store(flows.len(), Ordering::Release);
+    budget
+        .buffered_bytes
+        .store(flows.values().map(buffered_bytes).sum(), Ordering::Release);
+    evict_idle_at(flows, idle, Duration::from_secs(120), &budget);
 }
 
-fn evict_idle_at(flows: &mut HashMap<FlowKey, FlowState>, idle: Duration, now: Instant) {
-    flows.retain(|_, state| now.duration_since(state.last_seen) < idle);
+fn evict_idle_at(
+    flows: &mut HashMap<FlowKey, FlowState>,
+    idle: Duration,
+    now: Duration,
+    budget: &ResourceBudget,
+) -> usize {
+    if idle.is_zero() {
+        return 0;
+    }
+
+    let mut losses = 0;
+    flows.retain(|_, state| {
+        if now.saturating_sub(state.last_seen) < idle {
+            return true;
+        }
+
+        let buffered = buffered_bytes(state);
+        if buffered > 0 {
+            losses += 1;
+        }
+        budget.release_flow(buffered);
+        false
+    });
+    losses
 }
 
 #[cfg(test)]
@@ -873,6 +1214,41 @@ mod tests {
         msg
     }
 
+    fn test_options(
+        delimiter: u8,
+        max_flow_bytes: usize,
+        idle_timeout: Duration,
+    ) -> CaptureOptions {
+        CaptureOptions {
+            port_filter: None,
+            delimiter,
+            max_flow_bytes,
+            idle_timeout,
+            budget: Arc::new(ResourceBudget::new(1024, 16 * 1024 * 1024)),
+        }
+    }
+
+    fn test_flow_key(sport: u16) -> FlowKey {
+        FlowKey {
+            src: "10.0.0.1".parse().unwrap(),
+            dst: "10.0.0.2".parse().unwrap(),
+            sport,
+            dport: 9876,
+        }
+    }
+
+    fn test_packet_work(index: u64, key: FlowKey, seq: u32, payload: Vec<u8>) -> PacketWork {
+        PacketWork {
+            index,
+            captured_at: Duration::from_secs(index),
+            key,
+            seq,
+            payload,
+            starts_flow: false,
+            ends_flow: false,
+        }
+    }
+
     #[test]
     fn parse_delimiter_variants() {
         assert_eq!(parse_delimiter("SOH").unwrap(), 0x01);
@@ -883,7 +1259,7 @@ mod tests {
 
     #[test]
     fn reassembly_appends_in_order() {
-        let mut flow = FlowState::default();
+        let mut flow = FlowState::new(Duration::ZERO);
         let mut out = Vec::new();
         let message = build_fix_message("35=0\u{0001}", 0x01);
         let (part1, rest) = message.split_at(10);
@@ -932,7 +1308,7 @@ mod tests {
 
     #[test]
     fn retransmit_is_ignored() {
-        let mut flow = FlowState::default();
+        let mut flow = FlowState::new(Duration::ZERO);
         let mut out = Vec::new();
         let message = build_fix_message("35=0|49=AAA|", b'|');
         let part = &message[..10];
@@ -949,7 +1325,7 @@ mod tests {
 
     #[test]
     fn out_of_order_future_segment_is_buffered_until_gap_arrives() {
-        let mut flow = FlowState::default();
+        let mut flow = FlowState::new(Duration::ZERO);
         let mut out = Vec::new();
         let message = build_fix_message("35=0|49=AAA|56=BBB|", b'|');
         let partial = &message[..message.len() - 4];
@@ -974,6 +1350,41 @@ mod tests {
             "future segment should drain once the gap is filled"
         );
         assert!(out.is_empty(), "incomplete messages should stay buffered");
+    }
+
+    #[test]
+    fn out_of_order_segments_reassemble_across_sequence_wrap() {
+        let mut flow = FlowState::new(Duration::ZERO);
+        let mut out = Vec::new();
+        let message = build_fix_message("35=0|49=AAA|56=BBB|", b'|');
+        let split1 = 8;
+        let split2 = 24;
+        let start = u32::MAX - 10;
+
+        reassemble_and_emit(&mut flow, start, &message[..split1], b'|', 1024, &mut out).unwrap();
+        reassemble_and_emit(
+            &mut flow,
+            start.wrapping_add(split2 as u32),
+            &message[split2..],
+            b'|',
+            1024,
+            &mut out,
+        )
+        .unwrap();
+        reassemble_and_emit(
+            &mut flow,
+            start.wrapping_add(split1 as u32),
+            &message[split1..split2],
+            b'|',
+            1024,
+            &mut out,
+        )
+        .unwrap();
+
+        let mut expected = message;
+        expected.push(b'\n');
+        assert_eq!(out, expected);
+        assert!(flow.pending.is_empty());
     }
 
     #[test]
@@ -1015,6 +1426,30 @@ mod tests {
         let text = String::from_utf8(out).unwrap();
         assert!(text.contains("8=FIX.4.4"));
         assert!(text.ends_with('\n'));
+    }
+
+    #[test]
+    fn linux_cooked_v2_tcp_payload_is_decoded() {
+        let payload = build_fix_message("35=0\u{0001}", 0x01);
+        let builder =
+            PacketBuilder::ipv4([10, 0, 0, 1], [10, 0, 0, 2], 32).tcp(7001, 9876, 42, 4096);
+        let mut ip_packet = Vec::with_capacity(builder.size(payload.len()));
+        builder.write(&mut ip_packet, &payload).unwrap();
+
+        let mut cooked_packet = vec![0; LINUX_SLL2_HEADER_LEN];
+        cooked_packet[0..2].copy_from_slice(&ETHERTYPE_IPV4.to_be_bytes());
+        cooked_packet[8..10].copy_from_slice(&1u16.to_be_bytes());
+        cooked_packet.extend_from_slice(&ip_packet);
+
+        let packet =
+            decode_packet_data(&cooked_packet, LINKTYPE_LINUX_SLL2, cooked_packet.len()).unwrap();
+        let work = packet_to_work(packet, Some(9876), 0, Duration::ZERO)
+            .unwrap()
+            .expect("Linux cooked v2 packet should contain matching TCP payload");
+
+        assert_eq!(work.key.sport, 7001);
+        assert_eq!(work.key.dport, 9876);
+        assert_eq!(work.payload, payload);
     }
 
     #[test]
@@ -1106,7 +1541,7 @@ mod tests {
             next_seq: Some(14),
             buffer: b"8=FIX.4.4|9=".to_vec(),
             pending: BTreeMap::new(),
-            last_seen: Instant::now(),
+            last_seen: Duration::ZERO,
         };
 
         append_segment(&mut flow, 12, b"9=5|35=0|");
@@ -1122,7 +1557,7 @@ mod tests {
 
     #[test]
     fn reassembly_overflow_clears_flow_state() {
-        let mut flow = FlowState::default();
+        let mut flow = FlowState::new(Duration::ZERO);
         let mut out = Vec::new();
         let err = reassemble_and_emit(&mut flow, 1, b"0123456789", b'|', 4, &mut out).unwrap_err();
 
@@ -1130,6 +1565,106 @@ mod tests {
         assert!(flow.buffer.is_empty());
         assert!(flow.pending.is_empty());
         assert!(flow.next_seq.is_none());
+    }
+
+    #[test]
+    fn capture_timestamp_supports_microsecond_and_nanosecond_precision() {
+        assert_eq!(
+            capture_timestamp(10, 500_000, 1_000_000).unwrap(),
+            Duration::new(10, 500_000_000)
+        );
+        assert_eq!(
+            capture_timestamp(10, 123_456_789, 1_000_000_000).unwrap(),
+            Duration::new(10, 123_456_789)
+        );
+        assert!(capture_timestamp(10, 1_000_000, 1_000_000).is_err());
+    }
+
+    #[test]
+    fn zero_idle_timeout_disables_eviction() {
+        let key = test_flow_key(5000);
+        let mut flows = HashMap::from([(key, FlowState::new(Duration::ZERO))]);
+        let budget = ResourceBudget::new(1, 1024);
+        budget.flows.store(1, Ordering::Release);
+
+        let losses = evict_idle_at(
+            &mut flows,
+            Duration::ZERO,
+            Duration::from_secs(3600),
+            &budget,
+        );
+
+        assert_eq!(losses, 0);
+        assert!(flows.contains_key(&key));
+    }
+
+    #[test]
+    fn syn_resets_reused_flow_without_losing_new_message() {
+        let options = test_options(b'|', 1024, Duration::from_secs(60));
+        let key = test_flow_key(5000);
+        let first = build_fix_message("35=0|49=FIRST|", b'|');
+        let second = build_fix_message("35=1|49=SECOND|", b'|');
+        let mut flows = HashMap::new();
+        let mut scratch = Vec::new();
+        let mut out = Vec::new();
+
+        let warnings = handle_packet_work(
+            &test_packet_work(0, key, 100, first),
+            &options,
+            &mut flows,
+            &mut scratch,
+            &mut out,
+        )
+        .unwrap();
+        assert!(warnings.is_empty());
+
+        let mut reused = test_packet_work(1, key, 10, second);
+        reused.starts_flow = true;
+        let warnings =
+            handle_packet_work(&reused, &options, &mut flows, &mut scratch, &mut out).unwrap();
+
+        assert!(warnings.is_empty());
+        let text = String::from_utf8(out).unwrap();
+        assert!(text.contains("49=FIRST"));
+        assert!(text.contains("49=SECOND"));
+    }
+
+    #[test]
+    fn resource_limits_report_loss_and_clear_excess_buffers() {
+        let budget = Arc::new(ResourceBudget::new(1, 3));
+        let options = CaptureOptions {
+            budget: Arc::clone(&budget),
+            ..test_options(b'|', 1024, Duration::from_secs(60))
+        };
+        let mut flows = HashMap::new();
+        let mut scratch = Vec::new();
+        let mut out = Vec::new();
+
+        let warnings = handle_packet_work(
+            &test_packet_work(0, test_flow_key(5000), 1, b"8=FI".to_vec()),
+            &options,
+            &mut flows,
+            &mut scratch,
+            &mut out,
+        )
+        .unwrap();
+        assert!(warnings
+            .iter()
+            .any(|warning| warning.contains("total buffer")));
+        assert_eq!(budget.buffered_bytes.load(Ordering::Acquire), 0);
+
+        let warnings = handle_packet_work(
+            &test_packet_work(1, test_flow_key(5001), 1, b"8=FI".to_vec()),
+            &options,
+            &mut flows,
+            &mut scratch,
+            &mut out,
+        )
+        .unwrap();
+        assert!(warnings
+            .iter()
+            .any(|warning| warning.contains("flow count")));
+        assert_eq!(budget.flows.load(Ordering::Acquire), 1);
     }
 
     #[test]
@@ -1143,8 +1678,8 @@ mod tests {
                 dport: 5001,
             },
             FlowState {
-                last_seen: Instant::now() - Duration::from_secs(120),
-                ..FlowState::default()
+                last_seen: Duration::ZERO,
+                ..FlowState::new(Duration::ZERO)
             },
         );
         flows.insert(
@@ -1154,7 +1689,7 @@ mod tests {
                 sport: 5002,
                 dport: 5003,
             },
-            FlowState::default(),
+            FlowState::new(Duration::from_secs(119)),
         );
 
         evict_idle(&mut flows, Duration::from_secs(60));
@@ -1167,21 +1702,15 @@ mod tests {
     fn flow_shard_evicts_stale_partial_flows_on_idle_command() {
         let (command_tx, command_rx) = mpsc::channel();
         let (result_tx, result_rx) = mpsc::channel();
-        let options = CaptureOptions {
-            port_filter: None,
-            delimiter: b'|',
-            max_flow_bytes: 1024,
-            idle_timeout: Duration::from_secs(60),
-        };
+        let options = test_options(b'|', 1024, Duration::from_secs(60));
         let handle = thread::spawn(move || run_flow_shard(command_rx, result_tx, options));
         let message = build_fix_message("35=0|49=AAA|", b'|');
         let partial = message[..10].to_vec();
-        let stale_seen_at = Instant::now() - Duration::from_secs(120);
 
         command_tx
             .send(ShardCommand::Packet(PacketWork {
                 index: 0,
-                seen_at: stale_seen_at,
+                captured_at: Duration::ZERO,
                 key: FlowKey {
                     src: "10.0.0.1".parse().unwrap(),
                     dst: "10.0.0.2".parse().unwrap(),
@@ -1190,26 +1719,29 @@ mod tests {
                 },
                 seq: 1,
                 payload: partial,
+                starts_flow: false,
+                ends_flow: false,
             }))
             .unwrap();
         let packet_result = result_rx.recv().unwrap();
         assert!(packet_result.output.is_empty());
 
         command_tx
-            .send(ShardCommand::EvictIdle(Instant::now()))
+            .send(ShardCommand::EvictIdle(Duration::from_secs(120)))
             .unwrap();
         drop(command_tx);
 
-        let buffered = handle.join().unwrap();
+        let report = handle.join().unwrap();
         assert!(
-            buffered.is_empty(),
+            report.buffered.is_empty(),
             "explicit idle sweeps should drop stale partial flows before final flush"
         );
+        assert_eq!(report.losses, 1);
     }
 
     #[test]
     fn sweep_idle_flows_dispatches_at_most_once_per_interval() {
-        let (command_tx, command_rx) = mpsc::channel();
+        let (command_tx, command_rx) = mpsc::sync_channel(4);
         let (result_tx, result_rx) = mpsc::channel();
         drop(result_tx);
         let evictions = Arc::new(AtomicUsize::new(0));
@@ -1220,7 +1752,7 @@ mod tests {
                     thread_evictions.fetch_add(1, Ordering::SeqCst);
                 }
             }
-            Vec::new()
+            ShardReport::default()
         });
         let mut pool = FlowShardPool {
             shards: vec![FlowShard {
@@ -1230,15 +1762,31 @@ mod tests {
             results: result_rx,
             pending: BTreeMap::new(),
             next_output_index: 0,
+            losses: 0,
         };
         let mut state = CaptureState::default();
         let mut out = Vec::new();
+        let options = test_options(b'|', 1024, Duration::from_secs(60));
 
-        sweep_idle_flows(&mut state, &mut pool, &mut out).unwrap();
+        sweep_idle_flows(
+            Duration::from_secs(1),
+            &options,
+            &mut state,
+            &mut pool,
+            &mut out,
+        )
+        .unwrap();
         let first_sweep = state
             .last_idle_sweep
             .expect("first idle sweep should record a timestamp");
-        sweep_idle_flows(&mut state, &mut pool, &mut out).unwrap();
+        sweep_idle_flows(
+            Duration::from_millis(1500),
+            &options,
+            &mut state,
+            &mut pool,
+            &mut out,
+        )
+        .unwrap();
         assert_eq!(
             state.last_idle_sweep,
             Some(first_sweep),
@@ -1254,19 +1802,14 @@ mod tests {
         let (command_tx, command_rx) = mpsc::channel();
         let (result_tx, result_rx) = mpsc::channel();
         drop(result_rx);
-        let options = CaptureOptions {
-            port_filter: None,
-            delimiter: b'|',
-            max_flow_bytes: 1024,
-            idle_timeout: Duration::from_secs(60),
-        };
+        let options = test_options(b'|', 1024, Duration::from_secs(60));
         let handle = thread::spawn(move || run_flow_shard(command_rx, result_tx, options));
         let message = build_fix_message("35=0|49=AAA|", b'|');
 
         command_tx
             .send(ShardCommand::Packet(PacketWork {
                 index: 0,
-                seen_at: Instant::now(),
+                captured_at: Duration::ZERO,
                 key: FlowKey {
                     src: "10.0.0.1".parse().unwrap(),
                     dst: "10.0.0.2".parse().unwrap(),
@@ -1275,13 +1818,15 @@ mod tests {
                 },
                 seq: 1,
                 payload: message[..10].to_vec(),
+                starts_flow: false,
+                ends_flow: false,
             }))
             .unwrap();
         drop(command_tx);
 
-        let buffered = handle.join().unwrap();
+        let report = handle.join().unwrap();
         assert!(
-            buffered.is_empty(),
+            report.buffered.is_empty(),
             "worker shutdown on a closed result channel should not flush stale partial output"
         );
     }
@@ -1294,6 +1839,7 @@ mod tests {
             results: rx,
             pending: BTreeMap::new(),
             next_output_index: 0,
+            losses: 0,
         };
         let mut out = Vec::new();
 
@@ -1301,7 +1847,7 @@ mod tests {
             PacketResult {
                 index: 1,
                 output: b"second\n".to_vec(),
-                warning: None,
+                warnings: Vec::new(),
             },
             &mut out,
         )
@@ -1315,7 +1861,7 @@ mod tests {
             PacketResult {
                 index: 0,
                 output: b"first\n".to_vec(),
-                warning: None,
+                warnings: Vec::new(),
             },
             &mut out,
         )
@@ -1347,21 +1893,28 @@ mod tests {
             key_b,
             FlowState {
                 buffer: msg_b.clone(),
-                ..FlowState::default()
+                ..FlowState::new(Duration::ZERO)
             },
         );
         flows.insert(
             key_a,
             FlowState {
                 buffer: msg_a.clone(),
-                ..FlowState::default()
+                ..FlowState::new(Duration::ZERO)
             },
         );
 
         let mut scratch = Vec::new();
-        let outputs = flush_remaining_flow_outputs(&mut flows, b'|', &mut scratch);
+        let budget = ResourceBudget::new(2, 16 * 1024 * 1024);
+        budget.flows.store(2, Ordering::Release);
+        budget
+            .buffered_bytes
+            .store(msg_a.len() + msg_b.len(), Ordering::Release);
+        let (outputs, losses) =
+            flush_remaining_flow_outputs(&mut flows, b'|', &mut scratch, &budget);
 
         assert!(flows.is_empty(), "all flow buffers should be drained");
+        assert_eq!(losses, 0);
         assert_eq!(outputs.len(), 2);
         assert_eq!(outputs[0].key, key_a);
         assert_eq!(outputs[1].key, key_b);

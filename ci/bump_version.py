@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Patch the Cargo.toml version (and Cargo.lock if present) and print the bumped version.
+Patch the workspace package versions (and Cargo.lock if present).
 
 Usage:
     python bump_version.py <current_version> <new_version>
@@ -22,21 +22,43 @@ def bump_patch(version: str) -> str:
     return f"{major}.{minor}.{patch + 1}"
 
 
+WORKSPACE_PACKAGES = {
+    "fixdecoder": Path("Cargo.toml"),
+    "pcap2fix": Path("pcap2fix/Cargo.toml"),
+}
+
+
+def update_manifest(path: Path, cur: str, new: str) -> bool:
+    """Update one workspace package manifest."""
+    text = path.read_text(encoding="utf-8")
+    pattern = rf'^version\s*=\s*"{re.escape(cur)}"'
+    updated, count = re.subn(pattern, f'version = "{new}"', text, count=1, flags=re.M)
+    if count == 0:
+        print(f"failed to find version {cur} in {path}", file=sys.stderr)
+        return False
+    path.write_text(updated, encoding="utf-8")
+    return True
+
+
 def update_lockfile(cur: str, new: str) -> bool:
-    """Update the package version in Cargo.lock, if the file exists."""
+    """Update every workspace package version in Cargo.lock, if it exists."""
     lock_path = Path("Cargo.lock")
     if not lock_path.exists():
         return True
 
     text = lock_path.read_text(encoding="utf-8")
-    pattern = rf'(?m)^name = "fixdecoder"\nversion = "{re.escape(cur)}"'
-    replacement = f'name = "fixdecoder"\nversion = "{new}"'
-    updated, count = re.subn(pattern, replacement, text, count=1)
-    if count == 0:
-        print(f"failed to find fixdecoder version {cur} in Cargo.lock", file=sys.stderr)
-        return False
+    for package in WORKSPACE_PACKAGES:
+        pattern = rf'(?m)^name = "{re.escape(package)}"\nversion = "{re.escape(cur)}"'
+        replacement = f'name = "{package}"\nversion = "{new}"'
+        text, count = re.subn(pattern, replacement, text, count=1)
+        if count == 0:
+            print(
+                f"failed to find {package} version {cur} in Cargo.lock",
+                file=sys.stderr,
+            )
+            return False
 
-    lock_path.write_text(updated, encoding="utf-8")
+    lock_path.write_text(text, encoding="utf-8")
     return True
 
 
@@ -48,14 +70,9 @@ def main() -> int:
 
     cur = sys.argv[1]
     new = sys.argv[2] if len(sys.argv) > 2 else bump_patch(cur)
-    path = Path("Cargo.toml")
-    text = path.read_text(encoding="utf-8")
-    pattern = rf'^version\s*=\s*"{re.escape(cur)}"'
-    updated, count = re.subn(pattern, f'version = "{new}"', text, count=1, flags=re.M)
-    if count == 0:
-        print(f"failed to find version {cur} in Cargo.toml", file=sys.stderr)
-        return 1
-    path.write_text(updated, encoding="utf-8")
+    for path in WORKSPACE_PACKAGES.values():
+        if not update_manifest(path, cur, new):
+            return 1
 
     if not update_lockfile(cur, new):
         return 1
