@@ -63,18 +63,20 @@ scan: prepare
 		} && \
 		mkdir -p target/coverage && \
 		if command -v cargo-audit >/dev/null 2>&1; then \
+			audit_status=0; \
 			echo "Running cargo-audit (text output)"; \
 			if [ -d "$${HOME}/.cargo/advisory-db" ]; then \
-				cargo audit --no-fetch || true; \
+				cargo audit --no-fetch || audit_status=$$?; \
 			else \
-				cargo audit || true; \
+				cargo audit || audit_status=$$?; \
 			fi; \
 			echo "Running cargo-audit (SARIF) → target/coverage/rustsec.sarif"; \
 			if [ -d "$${HOME}/.cargo/advisory-db" ]; then \
-				cargo audit --no-fetch --format sarif > target/coverage/rustsec.sarif || true; \
+				cargo audit --no-fetch --format sarif > target/coverage/rustsec.sarif || audit_status=$$?; \
 			else \
-				cargo audit --format sarif > target/coverage/rustsec.sarif || true; \
+				cargo audit --format sarif > target/coverage/rustsec.sarif || audit_status=$$?; \
 			fi; \
+			if [ $$audit_status -ne 0 ]; then exit $$audit_status; fi; \
 		else \
 			echo "cargo-audit not installed; skipping security scan"; \
 		fi \
