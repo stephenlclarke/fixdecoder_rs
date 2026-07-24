@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.repository_owner == 'stephenlclarke'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Fetch repository traffic
         env:
           TRAFFIC_TOKEN: ${{ secrets.TRAFFIC_TOKEN }}

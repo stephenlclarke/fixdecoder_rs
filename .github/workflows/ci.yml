@@ -24,7 +24,7 @@ jobs:
     name: Prepare FIX specs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Verify FIX XML dictionaries
         shell: bash
         run: bash -lc 'source ci/ci_helper.sh && download_fix_specs'
@@ -40,7 +40,7 @@ jobs:
     needs: dictionaries
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'))
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Lint workflow YAML
         run: |
           python3 -m pip install --upgrade pip
@@ -59,7 +59,7 @@ jobs:
             exit 1
           fi
       - name: Cache Rust toolchain and cargo bin
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             ~/.rustup
@@ -77,7 +77,7 @@ jobs:
           name: fix-specs
           path: resources
       - name: Cache cargo registry and target
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -131,7 +131,7 @@ jobs:
     needs: [quality]
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'))
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Determine toolchain channel
         id: toolchain-id
         run: |
@@ -150,7 +150,7 @@ jobs:
         id: lockfile-hash
         run: echo "hash=$(sha256sum Cargo.lock | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
       - name: Cache Rust toolchain for Clippy
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/bin
@@ -260,7 +260,7 @@ jobs:
       FIXDECODER_COMMIT: ${{ github.sha }}
       FIXDECODER_GIT_URL: https://github.com/${{ github.repository }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Compute lockfile hash
         id: lockfile-hash
         shell: bash
@@ -284,7 +284,7 @@ jobs:
           name: fix-specs
           path: resources
       - name: Cache cargo registry and target
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -355,7 +355,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Determine release version from tag
         id: version
         run: |
@@ -427,7 +427,7 @@ jobs:
             printf "%s  %s\n" "$(sha256sum "${asset}" | cut -d' ' -f1)" "$(basename "${asset}")" >> "${checksum_file}"
           done
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.version.outputs.tag_name }}
           name: Version ${{ steps.version.outputs.version }}
