@@ -9,9 +9,9 @@ repository = "https://github.com/stephenlclarke/fixdecoder_rs"
 [dependencies]
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
-pcap-parser = { version = "0.14", features = ["data"] }
-etherparse = "0.15"
-thiserror = "1.0"
+pcap-parser = { version = "0.17", features = ["data"] }
+etherparse = "0.21"
+thiserror = "2.0"
 
 [dev-dependencies]
 assert_cmd = "2.0"
