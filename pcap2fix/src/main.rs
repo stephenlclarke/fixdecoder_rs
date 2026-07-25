@@ -458,7 +458,7 @@ fn process_capture<R: PcapReaderIterator + ?Sized, W: Write>(
                 reader.consume(offset);
             }
             Err(pcap_parser::PcapError::Eof) => return Ok(()),
-            Err(pcap_parser::PcapError::Incomplete) => {
+            Err(pcap_parser::PcapError::Incomplete(_)) => {
                 reader
                     .refill()
                     .map_err(|err| anyhow!("failed to refill reader: {err}"))?;
@@ -555,7 +555,7 @@ fn handle_ng_block<W: Write>(
                 InterfaceInfo {
                     linktype: description.linktype,
                     timestamp_resolution,
-                    timestamp_offset: description.ts_offset(),
+                    timestamp_offset: description.ts_offset() as u64,
                 },
             );
             state.next_if_id += 1;
@@ -682,7 +682,7 @@ fn record_capture_loss(state: &mut CaptureState, warning: &str) {
     eprintln!("warn: {warning}");
 }
 
-fn open_reader(path: &str) -> Result<Box<dyn PcapReaderIterator>> {
+fn open_reader(path: &str) -> Result<Box<dyn PcapReaderIterator + Send>> {
     if path == "-" {
         let stdin = io::stdin();
         create_reader(65536, stdin).map_err(|e| anyhow!("failed to create reader: {e}"))

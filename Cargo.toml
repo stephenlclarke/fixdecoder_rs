@@ -1,6 +1,6 @@
 [package]
 name = "fixdecoder"
-version = "0.3.0"
+version = "0.3.2"
 edition = "2024"
 
 [dependencies]
@@ -8,15 +8,15 @@ anyhow = "1.0"
 chrono = { version = "0.4", default-features = true }
 clap = { version = "4.5", features = ["derive"] }
 once_cell = "1.19"
-quick-xml = { version = "0.36", features = ["serialize"] }
+quick-xml = { version = "0.41", features = ["serialize"] }
 regex = "1.10"
 serde = { version = "1.0", features = ["derive"] }
 terminal_size = "0.4.3"
 roxmltree = "0.21.1"
 rayon = "1.10"
 ctrlc = "3.4"
-shlex = "1.3"
-crossterm = "0.28"
+shlex = "2.0"
+crossterm = "0.29"
 tempfile = "3.10"
 
 [dev-dependencies]
