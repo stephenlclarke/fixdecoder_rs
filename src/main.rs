@@ -11,6 +11,7 @@
 /// of the app.
 mod decoder;
 mod fix;
+mod ghostty_bindings;
 mod pager_help;
 
 use crate::decoder::colours;
@@ -67,7 +68,8 @@ fixdecoder [--xml <FILE>]... [--fix <VER>] [--info] [--message [<MSG>]]
            [--component [<NAME>]] [--tag [<TAG>]] [--column] [--verbose]
            [--header] [--trailer] [--colour [<yes|no|auto>]] [--delimiter <CHAR>]
            [--style <STYLE>] [--plain] [--number] [--paging <yes|no|auto>] [--pager <CMD>]
-           [--nowrap] [--follow] [--validate] [--secret] [--secret-files]
+           [--nowrap] [--install-ghostty-bindings[=<CONFIG>]] [--follow] [--validate]
+           [--secret] [--secret-files]
            [--summary] [--nocounts] [--secret-dir <DIR>] [-h|--help] [-v|--version] [FILE]...";
 const ORDER_XML: usize = 10;
 const ORDER_FIX: usize = 20;
@@ -94,6 +96,7 @@ const ORDER_SECRET_FILES: usize = 220;
 const ORDER_SUMMARY: usize = 230;
 const ORDER_NOCOUNTS: usize = 240;
 const ORDER_SECRET_DIR: usize = 250;
+const ORDER_GHOSTTY_BINDINGS: usize = 260;
 const ORDER_HELP: usize = 900;
 const ORDER_VERSION: usize = 910;
 
@@ -419,6 +422,10 @@ fn parse_cli_options() -> Result<Option<CliOptions>> {
         pager_help::display().context("failed to display pager help")?;
         return Ok(None);
     }
+    if let Some(path) = matches.get_one::<String>("install-ghostty-bindings") {
+        ghostty_bindings::install(path, &mut io::stdout())?;
+        return Ok(None);
+    }
 
     let default_matches = parse_default_arg_matches(default_args_env_value()?.as_deref())?;
     let opts = CliOptions::from_matches(&matches, default_matches.as_ref())?;
@@ -554,6 +561,14 @@ fn parse_default_arg_matches(raw_defaults: Option<&str>) -> Result<Option<ArgMat
     if matches.get_flag("version") {
         return Err(anyhow!(
             "{DEFAULT_ARGS_ENV} may not include --help or --version"
+        ));
+    }
+    if matches
+        .get_one::<String>("install-ghostty-bindings")
+        .is_some()
+    {
+        return Err(anyhow!(
+            "{DEFAULT_ARGS_ENV} may not include --install-ghostty-bindings"
         ));
     }
 
@@ -1350,6 +1365,16 @@ fn build_cli() -> Command {
             .action(ArgAction::SetTrue)
             .display_order(ORDER_NOWRAP)
             .help("Disable wrapping in pager mode and allow horizontal scrolling"),
+    )
+    .arg(
+        Arg::new("install-ghostty-bindings")
+            .long("install-ghostty-bindings")
+            .num_args(0..=1)
+            .value_name("CONFIG")
+            .require_equals(true)
+            .default_missing_value("auto")
+            .display_order(ORDER_GHOSTTY_BINDINGS)
+            .help("Install Ghostty pager bindings into the detected or specified config"),
     )
     .arg(
         Arg::new("follow")
@@ -2708,6 +2733,13 @@ mod tests {
     }
 
     #[test]
+    fn parse_default_arg_matches_rejects_ghostty_installer() {
+        let err = parse_default_arg_matches(Some("--install-ghostty-bindings")).unwrap_err();
+        assert!(err.to_string().contains(DEFAULT_ARGS_ENV));
+        assert!(err.to_string().contains("--install-ghostty-bindings"));
+    }
+
+    #[test]
     fn build_cli_rejects_duplicate_single_value_args() {
         let err = build_cli()
             .try_get_matches_from(["fixdecoder", "--fix=44", "--fix=50"])
@@ -2739,6 +2771,7 @@ mod tests {
                 "--paging",
                 "--pager",
                 "--nowrap",
+                "--install-ghostty-bindings",
                 "--follow",
                 "--validate",
                 "--secret",
@@ -2880,6 +2913,32 @@ mod tests {
         );
         assert!(matches.get_flag("nowrap"));
         assert!(matches.get_flag("number"));
+    }
+
+    #[test]
+    fn build_cli_parses_ghostty_binding_installer_paths() {
+        let automatic = build_cli()
+            .try_get_matches_from(["fixdecoder", "--install-ghostty-bindings"])
+            .expect("parse automatic installer");
+        assert_eq!(
+            automatic
+                .get_one::<String>("install-ghostty-bindings")
+                .map(String::as_str),
+            Some("auto")
+        );
+
+        let explicit = build_cli()
+            .try_get_matches_from([
+                "fixdecoder",
+                "--install-ghostty-bindings=/tmp/ghostty/config",
+            ])
+            .expect("parse explicit installer path");
+        assert_eq!(
+            explicit
+                .get_one::<String>("install-ghostty-bindings")
+                .map(String::as_str),
+            Some("/tmp/ghostty/config")
+        );
     }
 
     fn assert_ordered(haystack: &str, needles: &[&str]) {

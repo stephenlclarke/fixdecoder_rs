@@ -420,7 +420,9 @@ jobs:
             esac
           done
       - name: Add release notice
-        run: cp resources/NOTICE.md dist/NOTICE.md
+        run: |
+          cp resources/NOTICE.md dist/NOTICE.md
+          cp contrib/ghostty/fixdecoder-v1.ghostty dist/fixdecoder-ghostty-bindings-v1.ghostty
       - name: Generate release checksums
         run: |
           set -euo pipefail

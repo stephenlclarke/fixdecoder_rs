@@ -181,6 +181,49 @@ fn pager_help_mode_prints_the_available_keys() {
 }
 
 #[test]
+fn ghostty_binding_installer_creates_an_idempotent_versioned_include() {
+    let dir = tempdir().expect("temporary directory");
+    let config = dir.path().join("ghostty/config.ghostty");
+    let option = format!("--install-ghostty-bindings={}", config.display());
+
+    cargo_bin_cmd!("fixdecoder")
+        .arg(&option)
+        .assert()
+        .success()
+        .stdout(
+            contains("Installed Ghostty pager bindings")
+                .and(contains("fixdecoder-v1.ghostty"))
+                .and(contains("Reload Ghostty")),
+        );
+
+    let installed_config = fs::read_to_string(&config).expect("read installed config");
+    assert!(installed_config.contains("config-file = fixdecoder-v1.ghostty"));
+    let fragment = fs::read_to_string(
+        config
+            .parent()
+            .expect("config directory")
+            .join("fixdecoder-v1.ghostty"),
+    )
+    .expect("read installed fragment");
+    assert!(fragment.contains("fixdecoder Ghostty pager bindings v1"));
+    assert_eq!(fragment.matches("keybind = chain=csi:5~").count(), 4);
+    assert_eq!(fragment.matches("keybind = chain=csi:6~").count(), 4);
+
+    cargo_bin_cmd!("fixdecoder")
+        .arg(&option)
+        .assert()
+        .success()
+        .stdout(contains("already installed"));
+    assert_eq!(
+        fs::read_to_string(&config)
+            .expect("read idempotent config")
+            .matches("config-file = fixdecoder-v1.ghostty")
+            .count(),
+        1
+    );
+}
+
+#[test]
 fn secret_files_mode_writes_valid_obfuscated_sibling_file() {
     let dir = tempdir().expect("temp dir");
     let input = dir.path().join("orders.log");

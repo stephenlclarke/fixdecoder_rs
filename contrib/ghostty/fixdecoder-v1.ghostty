@@ -1,0 +1,18 @@
+# fixdecoder Ghostty pager bindings v1
+# Requires Ghostty 1.3.0 or later for chained actions.
+# This file is managed by `fixdecoder --install-ghostty-bindings`.
+
+keybind = home=csi:H
+keybind = end=csi:F
+
+keybind = super+page_up=csi:5~
+keybind = chain=csi:5~
+keybind = chain=csi:5~
+keybind = chain=csi:5~
+keybind = chain=csi:5~
+
+keybind = super+page_down=csi:6~
+keybind = chain=csi:6~
+keybind = chain=csi:6~
+keybind = chain=csi:6~
+keybind = chain=csi:6~

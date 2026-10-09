@@ -6,6 +6,7 @@ Usage: fixdecoder [--xml=FILE --xml=FILE2 ...] [--fix=VER] [--info]
            [--colour[=yes|no|auto]] [--delimiter=CHAR]
            [--style=STYLE] [--plain] [--number]
            [--paging=yes|no|auto] [--pager=CMD] [--nowrap]
+           [--install-ghostty-bindings[=CONFIG]]
            [--follow] [--validate] [--secret] [--secret-files]
            [--summary] [--nocounts] [--secret-dir=DIR]
            [-h|--help] [-v|--version] [file1.log file2.log ...]
@@ -39,6 +40,9 @@ Options:
   --paging=[yes|no|auto]   Pager mode.
   --pager=CMD              Pager command to use when paging is enabled.
   --nowrap                 Disable wrapping in pager mode and allow horizontal scrolling.
+  --install-ghostty-bindings[=CONFIG]
+                           Install the versioned Ghostty pager bindings into the detected
+                           config, or into CONFIG when supplied.
   --follow                 Stream input like tail -f.
   --validate               Validate FIX messages during decoding.
   --secret                 Obfuscate sensitive FIX tag values in decoded output.
@@ -125,6 +129,12 @@ Command line option examples:
     --nowrap, wrapped paging stays wrapped even if LESS requests chopped lines:
 
     $ fixdecoder --paging=yes --nowrap logs/fix.log
+
+    Install the Ghostty shortcuts used for five-screen paging. The optional
+    explicit path supports non-standard Ghostty configurations:
+
+    $ fixdecoder --install-ghostty-bindings
+    $ fixdecoder --install-ghostty-bindings=~/.config/ghostty/config.ghostty
 
     Apply default viewing options from the environment. Command-line values are
     applied afterwards and override single-value defaults. Keep input files on
