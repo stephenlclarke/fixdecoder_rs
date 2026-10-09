@@ -148,6 +148,23 @@ fn decodes_message_from_file_path() {
         .stdout(contains("BeginString"));
 }
 
+#[cfg(unix)]
+#[test]
+fn rejects_non_executable_file_as_pager_before_reading_stdin() {
+    let file = NamedTempFile::new().expect("temporary non-executable pager file");
+
+    cargo_bin_cmd!("fixdecoder")
+        .arg("--pager")
+        .arg(file.path())
+        .assert()
+        .failure()
+        .stderr(
+            contains("pager executable")
+                .and(contains("is not executable"))
+                .and(contains("--pager less")),
+        );
+}
+
 #[test]
 fn secret_files_mode_writes_valid_obfuscated_sibling_file() {
     let dir = tempdir().expect("temp dir");

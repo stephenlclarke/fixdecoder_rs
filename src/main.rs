@@ -422,6 +422,9 @@ fn parse_cli_options() -> Result<Option<CliOptions>> {
 }
 
 fn validate_cli_options(opts: &CliOptions) -> Result<()> {
+    if let Some(command) = opts.pager.as_deref() {
+        validate_explicit_pager(command)?;
+    }
     if opts.secret_dir.is_some() && !opts.secret_files {
         return Err(anyhow!("--secret-dir requires --secret-files"));
     }
@@ -450,6 +453,49 @@ fn validate_cli_options(opts: &CliOptions) -> Result<()> {
             return Err(anyhow!("--secret-files cannot be combined with {flag}"));
         }
     }
+    Ok(())
+}
+
+fn validate_explicit_pager(command: &str) -> Result<()> {
+    if command.trim().is_empty() || uses_shell_syntax(command) {
+        return Ok(());
+    }
+
+    let parts = shlex::split(command)
+        .ok_or_else(|| anyhow!("invalid --pager command: unmatched shell quoting"))?;
+    let Some(executable) = parts.first() else {
+        return Ok(());
+    };
+    let path = Path::new(executable);
+    if !path.is_absolute() && path.components().count() == 1 {
+        return Ok(());
+    }
+
+    let metadata = fs::metadata(path).map_err(|err| {
+        anyhow!(
+            "pager executable '{}' is unavailable: {err}",
+            path.display()
+        )
+    })?;
+    if !metadata.is_file() {
+        return Err(anyhow!(
+            "pager executable '{}' is not a file",
+            path.display()
+        ));
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if metadata.permissions().mode() & 0o111 == 0 {
+            return Err(anyhow!(
+                "pager executable '{}' is not executable; if this is an input file, specify the pager command first (for example: --pager less {})",
+                path.display(),
+                path.display()
+            ));
+        }
+    }
+
     Ok(())
 }
 

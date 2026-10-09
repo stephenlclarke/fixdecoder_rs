@@ -552,7 +552,7 @@ fixdecoder keeps its FIX-aware decode output, but now borrows bat’s terminal e
 - `--plain` disables decorative stdin headers, line numbers, and separators, but real files still keep the five-line file banner.
 - `--number` adds input line numbers to the rendered source lines.
 - `--paging=yes|no|auto` controls whether output is sent through a pager. `auto` uses a pager only for interactive terminals, `no` disables it, and `yes` forces it for interactive terminals.
-- `--pager=<CMD>` overrides the pager command. If unset, fixdecoder honours `PAGER` and otherwise falls back to `less`.
+- `--pager=<CMD>` overrides the pager command. If unset, fixdecoder honours `PAGER` and otherwise falls back to `less`. Put input files after the pager command, for example `fixdecoder --pager less orders.log`; path-based pager commands are checked before input processing so a missing or non-executable pager fails immediately.
 - `--nowrap` enables chopped lines and horizontal scrolling in pager mode. With the default `less` pager, left and right arrow movement shifts 10 columns at a time so wide FIX lines remain practical to inspect. Without `--nowrap`, fixdecoder keeps wrapped pager output even if inherited `less` settings request chopped lines. It has no effect when output is not being paged.
 - `FIXDECODER_DEFAULT_ARGS` can hold shell-style default options such as `--style=full --paging=yes --nowrap`. These defaults are applied before the real command line, so later single-value CLI options such as `--fix`, `--paging`, or `--pager` override the environment value. Keep input files on the real command line.
 
