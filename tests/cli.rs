@@ -235,7 +235,7 @@ fn file_decode_prints_blank_line_before_message_type_summary() {
     write!(file, "{}{}", fix_message("35=0"), fix_message("35=D")).expect("write temp");
 
     let assert = cargo_bin_cmd!("fixdecoder")
-        .args(["--fix=44", "--style=plain"])
+        .args(["--fix=44", "--style=full"])
         .arg(file.path())
         .assert()
         .success();

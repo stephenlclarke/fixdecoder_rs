@@ -706,7 +706,9 @@ pub fn print_message_counts(ctx: &mut PrettifyContext) -> io::Result<()> {
     if ctx.message_counts.is_empty() || !ctx.counts_dirty {
         return Ok(());
     }
-    writeln!(ctx.out)?;
+    if ctx.style.show_grid {
+        writeln!(ctx.out)?;
+    }
     render_message_counts(ctx.out, &ctx.message_counts)?;
     ctx.counts_dirty = false;
     Ok(())
@@ -2533,7 +2535,7 @@ mod tests {
             err_out: &mut err,
             obfuscator: &obfuscator,
             display_delimiter: '|',
-            style: OutputStyle::plain(),
+            style: OutputStyle::full(),
             wide_grid: false,
             source_separator_width: None,
             summary: &mut summary,
