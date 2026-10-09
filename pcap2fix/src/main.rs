@@ -108,7 +108,7 @@ impl ResourceBudget {
 
     fn try_acquire_flow(&self) -> bool {
         self.flows
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |current| {
                 (current < self.max_flows).then_some(current + 1)
             })
             .is_ok()
