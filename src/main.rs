@@ -11,6 +11,7 @@
 /// of the app.
 mod decoder;
 mod fix;
+mod pager_help;
 
 use crate::decoder::colours;
 use anyhow::{Context, Result, anyhow};
@@ -180,6 +181,7 @@ impl PagerWriter {
                 }
             }
         }
+        configure_pager_help(&mut child_cmd, &command, nowrap)?;
         let mut child = child_cmd
             .spawn()
             .with_context(|| format!("failed to launch pager: {command}"))?;
@@ -411,6 +413,10 @@ fn parse_cli_options() -> Result<Option<CliOptions>> {
 
     if matches.get_flag("version") {
         println!("{}", version_string());
+        return Ok(None);
+    }
+    if matches.get_flag("pager-help") {
+        pager_help::display().context("failed to display pager help")?;
         return Ok(None);
     }
 
@@ -713,6 +719,7 @@ fn page_rendered_files(command: &str, nowrap: bool, paths: &[PathBuf]) -> Result
             }
         }
     }
+    configure_pager_help(&mut child_cmd, &spec.command, nowrap)?;
 
     let status = child_cmd
         .status()
@@ -1050,6 +1057,18 @@ fn uses_less_pager(command: &str) -> bool {
         .is_some_and(|executable| is_less_executable(&executable))
 }
 
+fn uses_named_pager(command: &str, name: &str) -> bool {
+    shlex::split(command)
+        .and_then(|parts| parts.first().cloned())
+        .and_then(|executable| {
+            Path::new(&executable)
+                .file_name()
+                .and_then(|file_name| file_name.to_str())
+                .map(str::to_owned)
+        })
+        .is_some_and(|executable| executable == name)
+}
+
 fn is_less_executable(executable: &str) -> bool {
     Path::new(executable)
         .file_name()
@@ -1061,6 +1080,47 @@ fn uses_shell_syntax(command: &str) -> bool {
     command
         .chars()
         .any(|ch| matches!(ch, '|' | '&' | ';' | '<' | '>' | '$' | '`' | '(' | ')'))
+}
+
+fn configure_pager_help(
+    command: &mut ProcessCommand,
+    pager_command: &str,
+    nowrap: bool,
+) -> Result<()> {
+    if uses_named_pager(pager_command, "bat") {
+        command.env("BAT_PAGING", "always");
+        command.env("BAT_PAGER", "less");
+    }
+    if uses_named_pager(pager_command, "bat") || uses_named_pager(pager_command, "more") {
+        match effective_less_options(env::var("LESS").ok().as_deref(), nowrap) {
+            Some(options) => {
+                command.env("LESS", options);
+            }
+            None => {
+                command.env_remove("LESS");
+            }
+        }
+    }
+
+    let executable = env::current_exe().context("failed to locate the fixdecoder executable")?;
+    let existing = env::var("LESSKEY_CONTENT").ok();
+    let content = pager_help_lesskey_content(existing.as_deref(), &executable)?;
+    command.env("LESSKEY_CONTENT", content);
+    Ok(())
+}
+
+fn pager_help_lesskey_content(existing: Option<&str>, executable: &Path) -> Result<String> {
+    let executable = executable
+        .to_str()
+        .ok_or_else(|| anyhow!("fixdecoder executable path is not valid UTF-8"))?;
+    let helper_command = shlex::try_join([executable, "--pager-help"])
+        .map_err(|err| anyhow!("failed to prepare pager help command: {err}"))?;
+    let binding = format!("#command\n? shell \\020{helper_command}\\n\n");
+
+    Ok(existing
+        .map(str::trim_end)
+        .filter(|content| !content.is_empty())
+        .map_or(binding.clone(), |content| format!("{content}\n{binding}")))
 }
 
 fn normalise_less_command(command: &str, nowrap: bool) -> Result<String> {
@@ -1262,6 +1322,12 @@ fn build_cli() -> Command {
             .value_name("CMD")
             .display_order(ORDER_PAGER)
             .help("Pager command to use when paging is enabled"),
+    )
+    .arg(
+        Arg::new("pager-help")
+            .long("pager-help")
+            .hide(true)
+            .action(ArgAction::SetTrue),
     )
     .arg(
         Arg::new("nowrap")
@@ -2530,6 +2596,43 @@ mod tests {
         assert!(uses_less_pager("less -R"));
         assert!(uses_less_pager("/usr/bin/less -R"));
         assert!(!uses_less_pager("bat --style=plain"));
+    }
+
+    #[test]
+    fn bat_pager_forces_an_interactive_less_session() {
+        let mut command = ProcessCommand::new("bat");
+        configure_pager_help(&mut command, "bat", true).expect("configure bat pager");
+        let environment: HashMap<_, _> = command
+            .get_envs()
+            .filter_map(|(key, value)| value.map(|value| (key.to_owned(), value.to_owned())))
+            .collect();
+
+        assert_eq!(
+            environment.get(std::ffi::OsStr::new("BAT_PAGING")),
+            Some(&OsString::from("always"))
+        );
+        assert_eq!(
+            environment.get(std::ffi::OsStr::new("BAT_PAGER")),
+            Some(&OsString::from("less"))
+        );
+        assert!(
+            environment
+                .get(std::ffi::OsStr::new("LESS"))
+                .is_some_and(|value| value.to_string_lossy().contains("-S"))
+        );
+    }
+
+    #[test]
+    fn pager_help_binding_preserves_existing_less_keys() {
+        let content = pager_help_lesskey_content(
+            Some("#command\nx forw-line"),
+            Path::new("/tmp/fix decoder"),
+        )
+        .expect("pager help key binding");
+
+        assert!(content.starts_with("#command\nx forw-line\n"));
+        assert!(content.contains("? shell \\020"));
+        assert!(content.contains("'/tmp/fix decoder' --pager-help\\n"));
     }
 
     #[test]

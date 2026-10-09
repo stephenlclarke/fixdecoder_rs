@@ -166,6 +166,19 @@ fn rejects_non_executable_file_as_pager_before_reading_stdin() {
 }
 
 #[test]
+fn pager_help_mode_prints_the_available_keys() {
+    cargo_bin_cmd!("fixdecoder")
+        .arg("--pager-help")
+        .assert()
+        .success()
+        .stdout(
+            contains("fixdecoder pager help")
+                .and(contains("Press any key to return"))
+                .and(contains("q                     quit the pager")),
+        );
+}
+
+#[test]
 fn secret_files_mode_writes_valid_obfuscated_sibling_file() {
     let dir = tempdir().expect("temp dir");
     let input = dir.path().join("orders.log");
