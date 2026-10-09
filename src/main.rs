@@ -905,6 +905,7 @@ fn build_context<'a>(
         display_delimiter: opts.delimiter,
         style: opts.style,
         wide_grid: opts.nowrap && pager_active,
+        pager_header: pager_active,
         source_separator_width: None,
         summary,
         fix_override,
@@ -966,6 +967,9 @@ fn default_less_command(quit_if_one_screen: bool, nowrap: bool) -> String {
     command
 }
 
+const LESS_STICKY_HEADER_OPTIONS: [&str; 3] =
+    ["--header=1", "--no-number-headers", "--no-search-headers"];
+
 fn merged_less_options(existing: Option<&str>, extras: &[&str]) -> String {
     let mut parts: Vec<String> = existing
         .map(str::trim)
@@ -984,10 +988,14 @@ fn merged_less_options(existing: Option<&str>, extras: &[&str]) -> String {
 
 fn effective_less_options(existing: Option<&str>, nowrap: bool) -> Option<String> {
     let base = strip_less_horizontal_options(existing);
+    let with_header = merged_less_options(base.as_deref(), &LESS_STICKY_HEADER_OPTIONS);
     if nowrap {
-        Some(merged_less_options(base.as_deref(), &["-S", "--shift=10"]))
+        Some(merged_less_options(
+            Some(&with_header),
+            &["-S", "--shift=10"],
+        ))
     } else {
-        base
+        Some(with_header)
     }
 }
 
@@ -1147,7 +1155,7 @@ fn normalise_less_command(command: &str, nowrap: bool) -> Result<String> {
         options
     };
 
-    let mut merged = Vec::with_capacity(options.len() + 3);
+    let mut merged = Vec::with_capacity(options.len() + 6);
     merged.push(executable);
     merged.extend(options);
     if nowrap {
@@ -1156,6 +1164,11 @@ fn normalise_less_command(command: &str, nowrap: bool) -> Result<String> {
         }
         if !merged.iter().any(|token| token == "--shift=10") {
             merged.push("--shift=10".to_string());
+        }
+    }
+    for option in LESS_STICKY_HEADER_OPTIONS {
+        if !merged.iter().any(|token| token == option) {
+            merged.push(option.to_string());
         }
     }
 
@@ -2371,6 +2384,9 @@ mod tests {
             args,
             vec![
                 "-R".to_string(),
+                "--header=1".to_string(),
+                "--no-number-headers".to_string(),
+                "--no-search-headers".to_string(),
                 first.display().to_string(),
                 second.display().to_string()
             ]
@@ -2535,38 +2551,56 @@ mod tests {
 
     #[test]
     fn effective_less_options_strip_horizontal_scroll_when_nowrap_is_disabled() {
-        assert_eq!(effective_less_options(None, false), None);
+        let header = "--header=1 --no-number-headers --no-search-headers";
+        assert_eq!(
+            effective_less_options(None, false),
+            Some(header.to_string())
+        );
         assert_eq!(
             effective_less_options(Some("-R -S --shift=10"), false),
-            Some("-R".to_string())
+            Some(format!("-R {header}"))
         );
         assert_eq!(
             effective_less_options(Some("-RSX -#5"), false),
-            Some("-RX".to_string())
+            Some(format!("-RX {header}"))
         );
     }
 
     #[test]
     fn effective_less_options_add_horizontal_scroll_only_for_nowrap() {
+        let header = "--header=1 --no-number-headers --no-search-headers";
         assert_eq!(
             effective_less_options(Some("-R -S --shift=3"), true),
-            Some("-R -S --shift=10".to_string())
+            Some(format!("-R {header} -S --shift=10"))
         );
         assert_eq!(
             effective_less_options(Some("-R"), true),
-            Some("-R -S --shift=10".to_string())
+            Some(format!("-R {header} -S --shift=10"))
         );
     }
 
     #[test]
     fn normalise_less_command_strips_horizontal_flags_when_wrapping() {
         assert_eq!(
-            normalise_less_command("less -RS --shift=5 -M", false).unwrap(),
-            "less -R -M"
+            shlex::split(&normalise_less_command("less -RS --shift=5 -M", false).unwrap()).unwrap(),
+            vec![
+                "less",
+                "-R",
+                "-M",
+                "--header=1",
+                "--no-number-headers",
+                "--no-search-headers"
+            ]
         );
         assert_eq!(
-            normalise_less_command("/usr/bin/less -S -RX", false).unwrap(),
-            "/usr/bin/less -RX"
+            shlex::split(&normalise_less_command("/usr/bin/less -S -RX", false).unwrap()).unwrap(),
+            vec![
+                "/usr/bin/less",
+                "-RX",
+                "--header=1",
+                "--no-number-headers",
+                "--no-search-headers"
+            ]
         );
     }
 
@@ -2575,7 +2609,15 @@ mod tests {
         let command = normalise_less_command("less -R --shift=3", true).unwrap();
         assert_eq!(
             shlex::split(&command).unwrap(),
-            vec!["less", "-R", "-S", "--shift=10"]
+            vec![
+                "less",
+                "-R",
+                "-S",
+                "--shift=10",
+                "--header=1",
+                "--no-number-headers",
+                "--no-search-headers"
+            ]
         );
     }
 
@@ -2620,7 +2662,10 @@ mod tests {
         assert!(
             environment
                 .get(std::ffi::OsStr::new("LESS"))
-                .is_some_and(|value| value.to_string_lossy().contains("-S"))
+                .is_some_and(|value| {
+                    let value = value.to_string_lossy();
+                    value.contains("-S") && value.contains("--header=1")
+                })
         );
     }
 
@@ -2744,6 +2789,10 @@ mod tests {
         assert!(
             !ctx.live_status_enabled,
             "live status should be disabled while output is flowing through a pager"
+        );
+        assert!(
+            ctx.pager_header,
+            "paged output should render the single-line sticky header"
         );
     }
 

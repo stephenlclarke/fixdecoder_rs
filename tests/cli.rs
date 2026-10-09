@@ -174,6 +174,7 @@ fn pager_help_mode_prints_the_available_keys() {
         .stdout(
             contains("fixdecoder pager help")
                 .and(contains("Press any key to return"))
+                .and(contains("Fixed top line        file name, size"))
                 .and(contains("Cmd+PageUp/Down      move five screens"))
                 .and(contains("q                     quit the pager")),
         );

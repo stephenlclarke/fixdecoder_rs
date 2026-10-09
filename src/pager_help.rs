@@ -16,6 +16,7 @@ const HELP_LINES: &[&str] = &[
     "fixdecoder pager help",
     "",
     "Navigation",
+    "  Fixed top line        file name, size, modified and created times",
     "  Up/Down or k/j       move one line",
     "  Page Up/b            move back one screen",
     "  Page Down/Space      move forward one screen",

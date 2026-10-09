@@ -26,7 +26,7 @@ use std::io::{self, BufRead, BufReader, Seek, Write};
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 /// Shared context for prettification to keep function signatures concise.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -73,6 +73,7 @@ pub struct PrettifyContext<'a> {
     pub display_delimiter: char,
     pub style: OutputStyle,
     pub wide_grid: bool,
+    pub pager_header: bool,
     pub source_separator_width: Option<usize>,
     pub summary: &'a mut Option<OrderSummary>,
     pub fix_override: Option<&'a str>,
@@ -92,6 +93,7 @@ struct FileProcessorConfig {
     display_delimiter: char,
     style: OutputStyle,
     wide_grid: bool,
+    pager_header: bool,
     fix_override: Option<String>,
     validation_enabled: bool,
     live_status_enabled: bool,
@@ -105,6 +107,7 @@ impl FileProcessorConfig {
             display_delimiter: ctx.display_delimiter,
             style: ctx.style,
             wide_grid: ctx.wide_grid,
+            pager_header: ctx.pager_header,
             fix_override: ctx.fix_override.map(str::to_string),
             validation_enabled: ctx.validation_enabled,
             live_status_enabled: ctx.live_status_enabled,
@@ -650,6 +653,7 @@ fn process_file_in_parallel(path: &str, config: &FileProcessorConfig) -> Process
             display_delimiter: config.display_delimiter,
             style: config.style,
             wide_grid: config.wide_grid,
+            pager_header: config.pager_header,
             source_separator_width: None,
             summary: &mut summary,
             fix_override: config.fix_override.as_deref(),
@@ -981,6 +985,10 @@ fn stream_until_complete<R: BufRead>(reader: &mut R, ctx: &mut PrettifyContext) 
 
 fn announce_stdin_source(ctx: &mut PrettifyContext) {
     let colours = palette();
+    if ctx.pager_header {
+        let _ = writeln!(ctx.out, "{}Input: stdin{}", colours.file, colours.reset);
+        return;
+    }
     if !ctx.style.show_header {
         return;
     }
@@ -995,6 +1003,16 @@ fn announce_stdin_source(ctx: &mut PrettifyContext) {
 
 fn announce_file_source(path: &str, file: &File, ctx: &mut PrettifyContext) {
     let colours = palette();
+    if ctx.pager_header {
+        let _ = writeln!(
+            ctx.out,
+            "{}{}{}",
+            colours.file,
+            pager_file_header(path, file),
+            colours.reset
+        );
+        return;
+    }
     let filename = Path::new(path)
         .file_name()
         .and_then(|name| name.to_str())
@@ -1027,12 +1045,55 @@ fn announce_file_source(path: &str, file: &File, ctx: &mut PrettifyContext) {
 
 fn format_last_modified(file: &File) -> Option<String> {
     let modified = file.metadata().ok()?.modified().ok()?;
-    let modified = DateTime::<Utc>::from(modified);
-    Some(format!(
+    Some(format_file_time(modified))
+}
+
+fn pager_file_header(path: &str, file: &File) -> String {
+    let filename = Path::new(path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(path);
+    let Ok(metadata) = file.metadata() else {
+        return format!(
+            "Filename: {filename} | Size: unavailable | Modified: unavailable | Created: unavailable"
+        );
+    };
+    let modified = metadata
+        .modified()
+        .map(format_file_time)
+        .unwrap_or_else(|_| "unavailable".to_string());
+    let created = metadata
+        .created()
+        .map(format_file_time)
+        .unwrap_or_else(|_| "unavailable".to_string());
+    format!(
+        "Filename: {filename} | Size: {} | Modified: {modified} | Created: {created}",
+        format_file_size(metadata.len())
+    )
+}
+
+fn format_file_time(time: SystemTime) -> String {
+    let time = DateTime::<Utc>::from(time);
+    format!(
         "{}.{:03}Z",
-        modified.format("%d/%m/%y %H:%M:%S"),
-        modified.timestamp_subsec_millis()
-    ))
+        time.format("%d/%m/%y %H:%M:%S"),
+        time.timestamp_subsec_millis()
+    )
+}
+
+fn format_file_size(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
+    if bytes < 1024 {
+        return format!("{bytes} B");
+    }
+
+    let mut value = bytes as f64;
+    let mut unit = 0usize;
+    while value >= 1024.0 && unit + 1 < UNITS.len() {
+        value /= 1024.0;
+        unit += 1;
+    }
+    format!("{value:.1} {} ({bytes} bytes)", UNITS[unit])
 }
 
 fn extract_tag_value<'a>(msg: &'a str, tag: &str) -> Option<&'a str> {
@@ -1685,6 +1746,32 @@ mod tests {
     }
 
     #[test]
+    fn pager_file_header_includes_name_size_and_file_times_on_one_line() {
+        let mut file = NamedTempFile::new().expect("temp file");
+        std::io::Write::write_all(&mut file, &[b'x'; 1536]).expect("write temp file");
+        let filename = file
+            .path()
+            .file_name()
+            .and_then(|name| name.to_str())
+            .expect("temporary filename");
+
+        let header = pager_file_header(
+            file.path().to_str().expect("temporary path"),
+            file.as_file(),
+        );
+
+        assert_eq!(
+            header.lines().count(),
+            1,
+            "pager header must stay on one line"
+        );
+        assert!(header.starts_with(&format!("Filename: {filename} | ")));
+        assert!(header.contains("Size: 1.5 KiB (1536 bytes)"));
+        assert!(header.contains(" | Modified: "));
+        assert!(header.contains(" | Created: "));
+    }
+
+    #[test]
     fn prettify_aligns_group_entries_without_header() {
         let _lock = TEST_GUARD.lock().unwrap();
         disable_output_colours();
@@ -1950,6 +2037,7 @@ mod tests {
             display_delimiter: '|',
             style: OutputStyle::plain(),
             wide_grid: false,
+            pager_header: false,
             source_separator_width: None,
             summary: &mut summary,
             fix_override: None,
@@ -2020,6 +2108,7 @@ mod tests {
             display_delimiter: '|',
             style: OutputStyle::plain(),
             wide_grid: false,
+            pager_header: false,
             source_separator_width: None,
             summary: &mut summary,
             fix_override: None,
@@ -2078,6 +2167,7 @@ mod tests {
             display_delimiter: '|',
             style: OutputStyle::plain(),
             wide_grid: false,
+            pager_header: false,
             source_separator_width: None,
             summary: &mut summary,
             fix_override: None,
@@ -2137,6 +2227,7 @@ mod tests {
                     show_grid: false,
                 },
                 wide_grid: false,
+                pager_header: false,
                 source_separator_width: None,
                 summary: &mut summary,
                 fix_override: None,
@@ -2282,6 +2373,7 @@ mod tests {
             display_delimiter: '|',
             style: OutputStyle::plain(),
             wide_grid: false,
+            pager_header: false,
             source_separator_width: None,
             summary: &mut summary,
             fix_override: None,
@@ -2459,6 +2551,7 @@ mod tests {
                 show_grid: true,
             },
             wide_grid: true,
+            pager_header: false,
             source_separator_width: None,
             summary: &mut summary,
             fix_override: None,
@@ -2537,6 +2630,7 @@ mod tests {
             display_delimiter: '|',
             style: OutputStyle::full(),
             wide_grid: false,
+            pager_header: false,
             source_separator_width: None,
             summary: &mut summary,
             fix_override: None,
@@ -2603,6 +2697,7 @@ mod tests {
                 show_grid: true,
             },
             wide_grid: true,
+            pager_header: false,
             source_separator_width: None,
             summary: &mut summary,
             fix_override: None,

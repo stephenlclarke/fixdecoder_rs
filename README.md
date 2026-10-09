@@ -548,8 +548,8 @@ $ printf '<FIX log>' | fixdecoder --fix=44 --nocounts --colour=no
 
 fixdecoder keeps its FIX-aware decode output, but now borrows bat’s terminal ergonomics:
 
-- `--style=plain|numbers|header|grid|full` toggles bat-style decorations around the decoded stream. `full` enables line numbers and separators together. When reading real files, the output always begins with a five-line file banner showing `Filename:` and a UTC `Last Modified:` timestamp, even in plain mode.
-- `--plain` disables decorative stdin headers, line numbers, and separators, but real files still keep the five-line file banner.
+- `--style=plain|numbers|header|grid|full` toggles bat-style decorations around the decoded stream. `full` enables line numbers and separators together. Non-paged output from real files begins with a five-line file banner showing `Filename:` and a UTC `Last Modified:` timestamp. In pager mode, that scrolling banner is replaced by a single fixed top line showing the filename, human-readable and exact byte size, modified time, and creation time. Filesystems that do not expose creation time show it as unavailable.
+- `--plain` disables decorative stdin headers, line numbers, and separators. Real files retain the five-line banner outside pager mode and the fixed one-line file details inside pager mode.
 - `--number` adds input line numbers to the rendered source lines.
 - `--paging=yes|no|auto` controls whether output is sent through a pager. `auto` uses a pager only for interactive terminals, `no` disables it, and `yes` forces it for interactive terminals.
 - `--pager=<CMD>` overrides the pager command. If unset, fixdecoder honours `PAGER` and otherwise falls back to `less`. Put input files after the pager command, for example `fixdecoder --pager less orders.log`; path-based pager commands are checked before input processing so a missing or non-executable pager fails immediately.
