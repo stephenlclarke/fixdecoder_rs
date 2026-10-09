@@ -230,7 +230,7 @@ fn secret_files_mode_writes_valid_obfuscated_sibling_file() {
 }
 
 #[test]
-fn file_decode_prints_separator_before_message_type_summary() {
+fn file_decode_prints_blank_line_before_message_type_summary() {
     let mut file = NamedTempFile::new().expect("temp file");
     write!(file, "{}{}", fix_message("35=0"), fix_message("35=D")).expect("write temp");
 
@@ -241,6 +241,14 @@ fn file_decode_prints_separator_before_message_type_summary() {
         .success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
     let lines: Vec<&str> = stdout.lines().collect();
+    let title_index = lines
+        .iter()
+        .position(|line| line.trim_start().starts_with("Message Counts:"))
+        .expect("message count title should be present");
+    assert!(
+        title_index > 0 && lines[title_index - 1].is_empty(),
+        "message count summary should be separated from the final FIX message by a blank line: {stdout}"
+    );
     let header_index = lines
         .iter()
         .position(|line| line.trim_start().starts_with("Message Type"))

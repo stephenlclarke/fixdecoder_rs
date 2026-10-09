@@ -1115,9 +1115,8 @@ fn pager_help_lesskey_content(existing: Option<&str>, executable: &Path) -> Resu
         .ok_or_else(|| anyhow!("fixdecoder executable path is not valid UTF-8"))?;
     let helper_command = shlex::try_join([executable, "--pager-help"])
         .map_err(|err| anyhow!("failed to prepare pager help command: {err}"))?;
-    // lesskey treats unescaped semicolons in CSI sequences as command separators.
     let binding = format!(
-        "#command\n\\e[5\\;9~ back-screen bbbb\n\\e[6\\;9~ forw-screen ffff\n\\e[H goto-line\n\\e[F goto-end\n\\kh goto-line\n\\ke goto-end\n? shell \\020{helper_command}\\n\n"
+        "#command\n\\e[H goto-line\n\\e[F goto-end\n\\kh goto-line\n\\ke goto-end\n? shell \\020{helper_command}\\n\n"
     );
 
     Ok(existing
@@ -2634,8 +2633,6 @@ mod tests {
         .expect("pager help key binding");
 
         assert!(content.starts_with("#command\nx forw-line\n"));
-        assert!(content.contains("\\e[5\\;9~ back-screen bbbb\n"));
-        assert!(content.contains("\\e[6\\;9~ forw-screen ffff\n"));
         assert!(content.contains("\\e[H goto-line\n"));
         assert!(content.contains("\\e[F goto-end\n"));
         assert!(content.contains("\\kh goto-line\n"));

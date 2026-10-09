@@ -706,6 +706,7 @@ pub fn print_message_counts(ctx: &mut PrettifyContext) -> io::Result<()> {
     if ctx.message_counts.is_empty() || !ctx.counts_dirty {
         return Ok(());
     }
+    writeln!(ctx.out)?;
     render_message_counts(ctx.out, &ctx.message_counts)?;
     ctx.counts_dirty = false;
     Ok(())
@@ -2502,7 +2503,7 @@ mod tests {
     }
 
     #[test]
-    fn message_count_summary_includes_separator_before_header() {
+    fn message_count_summary_starts_after_blank_line_and_includes_table_separator() {
         let _lock = TEST_GUARD.lock().unwrap();
         disable_output_colours();
 
@@ -2551,6 +2552,11 @@ mod tests {
 
         let output = String::from_utf8(out).unwrap();
         let lines: Vec<&str> = output.lines().collect();
+        assert_eq!(
+            lines.first(),
+            Some(&""),
+            "message-count summary should start after a blank line: {output}"
+        );
         let header_index = lines
             .iter()
             .position(|line| line.trim_start().starts_with("Message Type"))
